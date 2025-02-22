@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "acebet.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]  # list of folders that contain the packages (["."] by default)
+include = ["data*"]  # package names should match these glob patterns (["*"] by default)
+
+[tool.uv]
+dev-dependencies = [
+    "coverage>=7.6.12",
+    "httpx>=0.27.2",
+    "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
+    "python-multipart>=0.0.12",
+    "ruff>=0.9.7",
+]
+
+[tool.setuptools]
+package-data = {"*" = ["**/*.joblib", "**/*.feather"]}
+
+[project]
+name = "acebet"
+dynamic = ["version"]
+requires-python = ">=3.10, <3.13"
+description = "Oracle of the Tennis Champion, mock-up of a bet prediction app"
+authors = [{name = "Thomas Bury", email = "bury.thomas@gmail.com"}]
+readme = {file = "README.md", content-type = "text/markdown"}
+keywords = ["tennis", "bet", "prediction", "oracle", "sportbet"]
+license = {file = "LICENSE.md"}
+classifiers = [
+    "Programming Language :: Python :: 3"
+]
+dependencies = [
+    "bcrypt>=4.2.0",
+    "fastapi[standard]>=0.115.0",
+    "joblib>=1.4.2",
+    "lightgbm>=3.3.1",
+    # "lightgbm==3.3.1",
+    "matplotlib>=3.9.2",
+    "numpy>=2.1.2",
+    "pandas>=2.2.3",
+    "passlib>=1.7.4",
+    "pyarrow>=17.0.0",
+    "pydantic>=2.9.2",
+    "python-jose[cryptography]>=3.3.0",
+    "python-multipart>=0.0.12",
+    "scikit-learn>=1.5.0",
+    "slowapi>=0.1.9",
+]
