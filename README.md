@@ -1,190 +1,226 @@
-# Mastering MLOps with UV: A Practical Guide Using AceBet
 
-Ease and speed up your MLOps workflows with efficient dependency management and deployment strategies.*
+# Mastering Python Project Management with UV: MLOps
 
+## How to use
 
+You have two options to follow along with this guide:
+
+1. Build the project from scratch by manually setting up the structure and copy-pasting the provided code base (src and tests folders).
+
+2. Clone the repository, install dependencies using the command `uv sync`, and run the commands explained below directly to:
+
+    * Execute the test suite
+    * Build the Docker image
+    * Modify and test GitHub Actions
+  
+
+Ship it like it's hot! 🚢🔥
 
 ## Introduction
+MLOps (Machine Learning Operations) is all about bringing DevOps principles into machine learning, making **model deployment, versioning, and monitoring more efficient**. However, managing dependencies, ensuring reproducibility, and streamlining deployments can be a major headache for ML/DS teams.
 
-In the evolving landscape of Machine Learning Operations (MLOps), efficient **dependency management** and **reproducibility** are paramount. Traditional tools like `pip` and `virtualenv` often fall short, leading to challenges in maintaining consistent environments. Enter **UV**, an ultra-fast Python package and project manager designed to address these issues head-on.
+That's where **UV** comes in—a fast, modern package manager that simplifies **dependency management, build processes, and CI/CD** for Python projects.
 
-In this guide, we'll explore how UV can enhance your MLOps workflows using **AceBet**, a mock-up tennis match predictor application, as a practical example.
+In this article, we'll explore how **UV** can enhance MLOps workflows through **AceBet**, a mock-up **FastAPI app** that predicts the winner of an ATP match (for demonstration purposes only—don’t bet your savings on it!). We'll cover:
 
----
+- Setting up a **UV-based MLOps project**
+- Managing **dependencies and lockfiles**
+- Automating **CI/CD with GitHub Actions**
+- **Building and deploying with Docker**
 
-## What is UV?
-
-**UV** is a modern Python package and project manager that offers:
-
-- **Speed**: Significantly faster installations compared to traditional tools.
-- **Reproducibility**: Robust lockfile support ensures consistent environments.
-- **Comprehensive Management**: Handles everything from Python version management to project initialization and dependency handling.
-
-For more details, refer to the [official UV documentation](https://docs.astral.sh/uv/).
-
----
-
-## Introducing AceBet
-
-**AceBet** is a mock-up application designed to predict tennis match outcomes. Built with **FastAPI**, it serves as an excellent case study to demonstrate MLOps concepts, including:
-
-- **Dependency Management**: Handling libraries and packages efficiently.
-- **Environment Setup**: Creating isolated and reproducible environments.
-- **Deployment**: Streamlining the process from development to production.
+### **Prerequisites**
+Make sure to read:
+- [Part 1: UV Basics](https://bury-thomas.medium.com/mastering-python-project-management-with-uv-part1-its-time-to-ditch-poetry-c2590091d90a)
+- [Part 2: Advanced UV Features](https://bury-thomas.medium.com/mastering-python-project-management-with-uv-part-2-deep-dives-and-advanced-use-1e2540e6f4a6)
 
 ---
 
-## Setting Up AceBet with UV
-
-### 1. Installing UV
-
-UV offers multiple installation methods. Choose the one that best fits your system:
-
-**Standalone Installer**:
-
-For macOS and Linux:
+## **📦 Initializing an MLOps Project with UV**
+When working on an **MLOps project**, structuring your codebase properly is crucial. We'll start by setting up a **packaged application** using UV:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+uv init --package acebet
 ```
 
-For Windows:
+A **packaged application** follows the **src-based structure**, where the source code is contained within a **dedicated package directory (`src/acebet`)**. This approach is beneficial for:
 
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
+✅ **Large applications with multiple modules**  
+✅ **Projects that need to be distributed** (e.g., PyPI packages, CLI tools)  
+✅ **Better namespace isolation**, preventing import conflicts  
+✅ **Improved testability and modularity**  
 
-**Alternative Methods**:
-
-- **Homebrew** (macOS):
-
-  ```bash
-  brew install uv
-  ```
-
-- **pip**:
-
-  ```bash
-  pip install uv
-  ```
-
-For more installation options, refer to the [UV installation guide](https://docs.astral.sh/uv/getting-started/installation/).
-
-### 2. Initializing the AceBet Project
-
-Navigate to your desired directory and initialize a new UV project:
-
-```bash
-uv init acebet
-cd acebet
-```
-
-This command sets up a new project with the following structure:
-
+### **Example Directory Structure**
 ```
 acebet/
-├── .python-version
+├── src/
+│   ├── acebet/
+│   │   ├── __init__.py
+│   │   ├── data_prep.py
+│   │   ├── model.py
+│   │   ├── predict.py
+│   │   ├── api.py
+│   │   └── utils.py
+├── tests/
+│   ├── test_model.py
 ├── pyproject.toml
-├── README.md
-└── main.py
+└── README.md
 ```
 
-### 3. Managing Dependencies
+This structure ensures:
+✔ **Encapsulation**: The application is a **proper Python package**, avoiding accidental name conflicts.  
+✔ **Reusability**: Can be **installed via `pip install .` or published to PyPI**.  
+✔ **Cleaner Imports**: Enforces absolute imports (`from acebet.utils import foo`) instead of relative imports.  
+✔ **Better CI/CD Support**: Easier to **package and distribute** in Docker, PyPI, or GitHub Actions.  
 
-Add necessary dependencies for AceBet:
+### **Regular App vs. Packaged App**
+👉 **For quick scripts or internal projects?** Use a **regular application**.  
+👉 **For scalable, maintainable, and deployable projects?** Use a **packaged application**.  
 
-```bash
-uv add fastapi uvicorn lightgbm joblib
-```
-
-This command updates your `pyproject.toml` and installs the specified packages.
-
-### 4. Setting Up the Development Environment
-
-UV automatically creates a virtual environment for your project. To activate it:
-
-For macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-For Windows:
-
-```powershell
-.venv\Scripts\activate
-```
-
-### 5. Running the Application
-
-With the environment set up, you can run the AceBet application:
-
-```bash
-uv run uvicorn main:app --reload
-```
-
-This command starts the FastAPI server, and you can access the application in your browser.
+Since **AceBet is a full MLOps project**, **we’ll use a packaged application**.
 
 ---
 
-## Enhancing MLOps Workflows with UV
+## **🔧 Managing Dependencies with UV**
+### **Installing Core Dependencies**
+Once your project is initialized, install the necessary dependencies for **developing AceBet**, including **FastAPI** and **machine learning libraries** like Scikit-learn:
 
-### Reproducibility with Lockfiles
+```bash
+uv add fastapi scikit-learn pandas lightgbm
+```
 
-To ensure consistent environments across different setups:
+UV will **automatically resolve versions** and install the required packages.
+
+### **Creating a Lockfile for Reproducibility**
+One of UV's key advantages is ensuring **dependency reproducibility** with a **lockfile**. This guarantees that all environments (**local, staging, production**) use the **same** dependency versions.
+
+Once you're satisfied with the **initial codebase**, generate a **lockfile**:
 
 ```bash
 uv lock
 ```
 
-This generates a `uv.lock` file, capturing the exact versions of your dependencies. To synchronize another environment with this setup:
+Or, if you want to sync **all dependencies** in one go:
 
 ```bash
 uv sync
 ```
 
-### Version Control and Collaboration
+This process ensures **version consistency across environments**, which is an **essential practice in MLOps**.
 
-By committing the `pyproject.toml` and `uv.lock` files to your version control system, collaborators can replicate the environment effortlessly:
+---
+
+## **🛠 Adding Testing Dependencies & Running Tests**
+Testing is **just as important** as model accuracy in MLOps. UV provides **three different ways** to manage **testing tools** (e.g., `pytest`):
+
+| **Method**                 | **Command**                    | **Use Case** |
+|----------------------------|--------------------------------|-------------|
+| **Adding as Dev Dependency** | `uv add --dev pytest`         | When `pytest` is part of your **Python project** |
+| **Running Temporarily**     | `uvx pytest tests`            | When you **only need to run it occasionally** |
+| **Installing Persistently** | `uv tool install pytest`      | When you need `pytest` in **Docker** or as a global CLI |
+
+For **MLOps best practices**, we **add testing dependencies**:
 
 ```bash
-uv sync
+uv add --dev pytest
 ```
 
-This command reads the lockfile and installs the exact dependencies, ensuring consistency across all development environments.
+To **run tests**:
 
-### Deployment Optimization
+```bash
+uv run pytest tests
+```
 
-For deploying AceBet, UV streamlines the process:
-
-1. **Building the Project**:
-
-   ```bash
-   uv build
-   ```
-
-   This creates distributable packages in the `dist/` directory.
-
-2. **Publishing the Package**:
-
-   ```bash
-   uv publish --token YOUR_PYPI_TOKEN
-   ```
-
-   Replace `YOUR_PYPI_TOKEN` with your actual PyPI token. This command uploads your package to the Python Package Index or any other specified repository.
-
-For detailed instructions, refer to the [UV packaging guide](https://docs.astral.sh/uv/guides/package/).
+**👉 Best Practice:** Explicitly list **all required dependencies** in `pyproject.toml` for **consistent test environments**.
 
 ---
 
-## Conclusion
+## **🚀 Automating CI/CD with GitHub Actions**
+A **CI/CD pipeline** ensures your **models and applications** remain **production-ready**. UV makes **GitHub Actions** setup **seamless**.
 
-Integrating **UV** into your MLOps workflows offers a robust solution for managing dependencies, ensuring reproducibility, and streamlining deployment processes. By adopting UV, teams can focus more on developing innovative machine learning solutions and less on the intricacies of environment management.
+A simple **workflow** to **run tests on every commit to `main`**:
 
-For further reading and advanced features, explore the [official UV documentation](https://docs.astral.sh/uv/).
+```yaml
+name: Testing
+on:
+  push:
+    branches:
+      - "main"
+jobs:
+  uv-example:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install UV
+        uses: astral-sh/setup-uv@v5
+      - name: Install the project
+        run: uv sync --all-extras --dev
+      - name: Run tests
+        run: uv run pytest tests
+```
+
+✅ **Installs UV**  
+✅ **Syncs dependencies**  
+✅ **Runs unit tests using Pytest**  
 
 ---
 
-*Note: This article is part of the "Mastering Python Project Management with UV" series. Be sure to check out the previous installments for a comprehensive understanding.*
+## **🐳 Building a Docker Image with UV**
+A **well-built Docker image** ensures consistent deployment across environments. UV simplifies **containerization**.
 
---- 
+### **Dockerfile for AceBet**
+```dockerfile
+FROM python:3.12-slim
+
+# Install UV
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy the application into the container
+COPY . /app
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies
+RUN uv sync --frozen --no-cache
+
+# Run the FastAPI app
+CMD ["/app/.venv/bin/fastapi", "run", "src/acebet/api.py", "--port", "80", "--host", "0.0.0.0"]
+```
+
+For **production-ready builds**, use a **multi-stage Docker build** to keep the image **lightweight**.
+
+---
+
+## **🌟 Why UV for MLOps?**
+| **Feature**                 | **UV** 🚀 (Rust-based) | **Poetry** 🛠️ (Python-based) |
+|-----------------------------|------------------------|------------------------------|
+| **⏩ Performance & Speed**   | ⚡ **8-10x faster** than pip & pip-tools (80-115x with cache). Ideal for **CI/CD**. | 🐢 Slower dependency resolution and package installation. Can be a bottleneck in large projects. |
+| **🔧 Dependency Management** | Uses a **global cache** to avoid redundant installations. Faster and more efficient. | Uses a **custom resolver**, but can be slow for large projects. |
+| **📦 Environment Handling** | **Manages Python versions** natively (no need for pyenv). Creates fast, lightweight virtual environments. | Supports virtual environments but **requires external tools** for Python version management. |
+| **🐳 Docker Efficiency** | ✅ **Smaller images** & faster builds. **Simplifies deployment** by combining Python & dependency management. | ❌ **Larger image footprint** due to reliance on multiple tools. Longer build times. |
+| **🚀 CI/CD Pipelines** | ✅ **Faster builds** due to Rust-based optimizations. Reduces install time in GitHub Actions, Docker, and cloud environments. | ❌ **Slower CI/CD performance** due to Python-based dependency resolution. |
+| **🔄 Migration & Ecosystem** | ✅ **Follows PEP standards closely**, making migration easier. **Less tightly integrated**, offering flexibility. | ❌ More **opinionated ecosystem**, making migration or integration with existing tools more complex. |
+| **🔑 Authentication & Config** | ✅ Simplifies authentication using **environment variables**. Ensures **cross-platform consistency**. | ❌ Configuration can be complex, requiring additional setup for cross-platform consistency. |
+| **📜 Unified Tooling** | ✅ **All-in-one tool**: Handles package management, virtual environments, and Python versions. **No need for extra tools**. | ❌ **Depends on multiple tools** (e.g., `pyenv` for Python versioning), increasing setup complexity. |
+| **🏗️ Build & Deployment** | ✅ **Optimized for modern workflows**. Generates smaller wheels and installs faster in **Docker, Kubernetes, and cloud deployments**. | ❌ Traditional package builds, **not as optimized** for modern DevOps/MLOps pipelines. |
+
+### **🎯 Key Takeaways**
+- If you need **speed, lightweight builds, and a streamlined DevOps workflow**, **UV is the better choice**. 🚀  
+- If you prefer **a well-established but slower tool with more integrated features**, **Poetry remains viable**. 🛠️  
+- **For MLOps & CI/CD**, **UV's speed and efficiency make it the preferred option**. 💡  
+
+---
+
+## **🎯 Conclusion**
+By integrating **UV** into your **MLOps workflow**, you get a **fast, reproducible, and efficient setup** for managing **dependencies, testing, and deployment**.
+
+With **AceBet**, we demonstrated how to:
+✔️ **Initialize a UV-based project**  
+✔️ **Manage dependencies & lockfiles**  
+✔️ **Automate testing with GitHub Actions**  
+✔️ **Build Docker images for deployment**  
+
+**Give UV a try**—it might just **replace Pip and Poetry** in your workflow! 🚀  
+
+**Happy Coding!**
