@@ -48,16 +48,17 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["12/minute"])
 # which serves as the core of your web application.
 # This instance is used to define routes, middleware,
 # exception handlers, and other configurations for the web service.
-app = FastAPI()
+app = FastAPI() # Initialize FastAPI application
 
 # sets the limiter instance you created as a state variable of the FastAPI app.
 # This allows you to access the limiter instance from the route functions using app.state.limiter.
-app.state.limiter = limiter
+app.state.limiter = limiter # Set rate limiter instance for the app
 
 # Add an exception handler to the FastAPI app that will catch RateLimitExceeded
 # exceptions raised by the slowapi library. The _rate_limit_exceeded_handler function
 # handles what should be done when a rate limit is exceeded.
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# This ensures that rate limit violations are handled gracefully.
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler) # Add rate limit exception handler
 
 # Add the user activity middleware to the app
 # app.add_middleware(
@@ -100,10 +101,11 @@ async def set_body(request: Request, body: bytes):
     async def receive() -> Message:
         return {"type": "http.request", "body": body}
 
-    request._receive = receive
+    request._receive = receive # Replace the original receive method with the new one
 
 
 @app.middleware("http")
+# Middleware for logging user activity
 async def user_logging_middleware(request: Request, call_next):
     """
     A middleware function that logs the request body and the response body.
@@ -280,15 +282,22 @@ async def predict_match_outcome(
     date = request.date
     testing = request.testing
 
+    # Determine the data file and model path based on the 'testing' flag.
+    # If 'testing' is true, use sample data and model path for testing purposes.
+    # Otherwise, use production data and model path.
     if testing:
+        # Use sample data file for testing
         data_file = (
             Path(__file__).resolve().parents[1] / "data" / "atp_data_sample.feather"
         )
+        # Use model path for testing
         model_path = Path(__file__).resolve().parents[1] / "data"
     else:
+        # Use production data file
         data_file = (
             Path(__file__).resolve().parents[3] / "data" / "atp_data_production.feather"
         )
+        # Use production model path
         model_path = Path(__file__).resolve().parents[3]
 
     prob, class_, player_1 = make_prediction(
