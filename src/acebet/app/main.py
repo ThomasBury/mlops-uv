@@ -86,6 +86,7 @@ def log_info(req_body, res_body):
     logging.info(res_body)
 
 
+# async def: request body access uses awaitable ASGI receive channel.
 async def set_body(request: Request, body: bytes):
     """
     Replaces the request's `body` attribute with a function that returns the request body.
@@ -106,6 +107,7 @@ async def set_body(request: Request, body: bytes):
 
 @app.middleware("http")
 # Middleware for logging user activity
+# async def: middleware awaits request/response streaming and call_next.
 async def user_logging_middleware(request: Request, call_next):
     """
     A middleware function that logs the request body and the response body.
@@ -142,7 +144,8 @@ async def user_logging_middleware(request: Request, call_next):
 
 # Home route
 @app.get("/")
-async def home():
+# def: simple synchronous response; no async I/O needed.
+def home():
     """
     Welcome Route
 
@@ -158,7 +161,8 @@ async def home():
 # Note: the route decorator must be above the limit decorator, not below it
 @app.get("/limit/")
 @limiter.limit("5/minute")
-async def limit(request: Request, user_id: str):
+# def: synchronous rate-limit demo logic; FastAPI can run it in threadpool.
+def limit(request: Request, user_id: str):
     """
     Rate Limiting Demo Route
 
@@ -177,7 +181,8 @@ async def limit(request: Request, user_id: str):
 
 # User authentication route
 @app.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+# def: auth flow uses sync hashing/JWT helpers and no awaited async calls.
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     """
     User authentication route for generating an access token.
 
@@ -211,7 +216,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 # User profile route
 @app.get("/users/me/", response_model=User)
-async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
+# def: returns dependency data only; no async operations.
+def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
     """
     User Profile Route
 
@@ -231,7 +237,8 @@ async def read_users_me(current_user: UserInDB = Depends(get_current_active_user
 
 
 @app.get("/users/me/items/", response_model=list[dict])
-async def read_own_items(current_user: UserInDB = Depends(get_current_active_user)):
+# def: synchronous object construction; no async I/O.
+def read_own_items(current_user: UserInDB = Depends(get_current_active_user)):
     """
     User's Item Collection Route
 
@@ -257,7 +264,8 @@ async def read_own_items(current_user: UserInDB = Depends(get_current_active_use
 # Prediction route with user activity logging
 @app.post("/predict/", response_model=PredictionResponse)
 # @limiter.limit("60/minute")
-async def predict_match_outcome(
+# def: endpoint runs blocking ML/pandas/joblib work, so let FastAPI threadpool handle it.
+def predict_match_outcome(
     request: PredictionRequest, current_user: UserInDB = Depends(get_current_user)
 ):
     """
