@@ -169,7 +169,8 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
 
 # The security guard checking your identity
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
+# def: JWT decode and in-memory lookup are synchronous operations.
+def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
     """
     Retrieve the current user based on the provided token.
     This function is responsible for extracting the user's
@@ -214,7 +215,8 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
 
 
 # The gatekeeper checking your access rights
-async def get_current_active_user(
+# def: only performs synchronous user status validation.
+def get_current_active_user(
     current_user: UserInDB = Depends(get_current_user),
 ) -> UserInDB:
     """
