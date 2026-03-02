@@ -1,6 +1,6 @@
 [project]
 site_name = "Documentation"
-site_url = "https://OWNER.github.io/mlops-uv/"
+site_url = "https://OWNER.github.io/mlops-uv/" # ℹ️ Replace OWNER with your GitHub username or organization.
 
 [build]
 source = "docs"
