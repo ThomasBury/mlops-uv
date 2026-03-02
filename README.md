@@ -58,7 +58,9 @@ acebet/
 │   │   ├── data_prep.py
 │   │   ├── model.py
 │   │   ├── predict.py
-│   │   ├── api.py
+│   │   ├── app/
+│   │   │   ├── __init__.py
+│   │   │   └── main.py
 │   │   └── utils.py
 ├── tests/
 │   ├── test_model.py
@@ -185,10 +187,63 @@ WORKDIR /app
 RUN uv sync --frozen --no-cache
 
 # Run the FastAPI app
-CMD ["/app/.venv/bin/fastapi", "run", "src/acebet/api.py", "--port", "80", "--host", "0.0.0.0"]
+CMD ["/app/.venv/bin/fastapi", "run", "src/acebet/app/main.py", "--port", "80", "--host", "0.0.0.0"]
 ```
 
 For **production-ready builds**, use a **multi-stage Docker build** to keep the image **lightweight**.
+
+## **✅ Canonical (Known-Good) Commands**
+The command sets below were verified against this repository layout (`src/acebet/app/main.py`, `tests/test_acebet.py`, and `src/acebet/train/train.py`).
+
+### 1) API startup + health check (local)
+```bash
+# from repository root
+uv sync
+uv run fastapi run src/acebet/app/main.py --host 127.0.0.1 --port 8000
+```
+
+In another terminal:
+
+```bash
+curl -fsS http://127.0.0.1:8000/
+```
+
+### 2) API startup + health check (container)
+```bash
+# from repository root
+docker build -t acebet:local .
+docker run --rm -p 8000:80 acebet:local
+```
+
+In another terminal:
+
+```bash
+curl -fsS http://127.0.0.1:8000/
+```
+
+### 3) Test run
+```bash
+uv run pytest tests
+```
+
+### 4) Model training (module exposed in repo)
+```bash
+uv run python -m acebet.train.train
+```
+
+### 5) Prediction endpoint call (token + authenticated request)
+```bash
+# 1) fetch token
+TOKEN=$(curl -fsS -X POST http://127.0.0.1:8000/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'username=johndoe&password=secret' | python -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+
+# 2) call prediction endpoint
+curl -fsS -X POST http://127.0.0.1:8000/predict/ \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"p1_name":"Fognini F.","p2_name":"Jarry N.","date":"2018-03-04","testing":true}'
+```
 
 ---
 
