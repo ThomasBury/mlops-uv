@@ -1,0 +1,19 @@
+[project]
+site_name = "Documentation"
+site_url = "https://OWNER.github.io/mlops-uv/"
+
+[build]
+source = "docs"
+output = "site"
+
+[[nav]]
+title = "Home"
+path = "index.md"
+
+[[nav]]
+title = "Getting Started"
+path = "getting-started.md"
+
+[[nav]]
+title = "Markdown"
+path = "markdown.md"
