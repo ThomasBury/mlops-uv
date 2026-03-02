@@ -53,7 +53,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/<owner>/acebet:latest
+          tags: ghcr.io/${{ github.repository_owner }}/acebet:latest
 ```
 
 ## Expected output
