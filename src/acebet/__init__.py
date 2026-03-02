@@ -1,3 +1,3 @@
-"""AceBet package metadata and public version identifier."""
+"""AceBet package: tennis match winner prediction app and ML workflow utilities."""
 
 __version__ = "0.0.2"

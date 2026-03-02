@@ -21,6 +21,13 @@ You have two options to follow along with this guide:
 
 Ship it like it's hot! 🚢🔥
 
+## Project metadata
+
+- **Canonical project name**: `acebet` (from `[project].name` in `pyproject.toml`)
+- **Package (import) name**: `acebet` (from `src/acebet/`)
+- **Version source**: dynamic version from `acebet.__version__` via `[tool.setuptools.dynamic]`
+- **License file path**: `LICENSE` (from `[project].license.file`)
+
 ## Introduction
 MLOps (Machine Learning Operations) is all about bringing DevOps principles into machine learning, making **model deployment, versioning, and monitoring more efficient**. However, managing dependencies, ensuring reproducibility, and streamlining deployments can be a major headache for ML/DS teams.
 

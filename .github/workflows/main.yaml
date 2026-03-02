@@ -18,6 +18,37 @@ jobs:
       - name: Install the project
         run: uv sync --all-extras --dev
 
+      - name: Validate pyproject referenced files
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          pyproject = pathlib.Path('pyproject.toml').read_text(encoding='utf-8')
+          patterns = {
+              'readme.file': r'(?m)^readme\s*=\s*\{[^}]*file\s*=\s*"([^"]+)"',
+              'license.file': r'(?m)^license\s*=\s*\{[^}]*file\s*=\s*"([^"]+)"',
+          }
+
+          missing = []
+          checked = []
+          for field, pattern in patterns.items():
+              match = re.search(pattern, pyproject)
+              if not match:
+                  continue
+              path = match.group(1)
+              checked.append(path)
+              if not pathlib.Path(path).is_file():
+                  missing.append(f'{field} -> {path}')
+
+          if missing:
+              raise SystemExit('Missing file(s) referenced by pyproject.toml: ' + ', '.join(missing))
+
+          print('All referenced files exist: ' + ', '.join(checked))
+          PY
+
+      - name: Run tests
+        # For example, using `pytest`
       - name: Lint docstrings
         run: |
           uv run ruff check \
