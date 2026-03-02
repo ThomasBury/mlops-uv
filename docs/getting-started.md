@@ -1,51 +1,49 @@
 # Getting Started
 
-This project uses **Zensical** to build and preview documentation from Markdown files under `docs/`.
+This guide helps you get the AceBet MLOps project running locally with UV.
 
 ## Prerequisites
 
-- Python 3.10+
-- [uv](https://docs.astral.sh/uv/)
+- Python 3.12+
+- UV installed and available on `PATH`
+- Git
+- Optional: Docker for image builds
 
-## Install tooling
+## Setup steps
 
-Run these commands from the repository root:
-
-```bash
-uv sync --dev
-uv add --dev zensical
-```
-
-## Bootstrap docs (if needed)
+### 1. Clone and enter the repository
 
 ```bash
-zensical new .
+git clone https://github.com/OWNER/REPOSITORY.git mlops-uv
+cd mlops-uv
 ```
 
-## Build docs locally
+### 2. Install dependencies
 
 ```bash
-zensical build --clean
+uv sync
 ```
 
-## Preview docs locally
+### 3. Run tests
 
 ```bash
-zensical serve
+uv run pytest tests
 ```
 
-## Contribution flow for docs updates
+### 4. Start the API
 
-1. Create a branch for your documentation update.
-2. Add or edit Markdown files in `docs/`.
-3. Run a local docs build:
-   ```bash
-   zensical build --clean
-   ```
-4. Run local preview and validate rendering:
-   ```bash
-   zensical serve
-   ```
-5. Commit your changes and open a pull request.
+```bash
+uv run fastapi run src/acebet/app/main.py --host 0.0.0.0 --port 8000
+```
 
-On pull requests, GitHub Actions builds docs automatically. On pushes to `main`, docs are published to GitHub Pages.
+## Expected output
+
+- `uv sync` completes with a success message and creates/updates `.venv`.
+- `uv run pytest tests` shows all tests passing.
+- `uv run fastapi run ...` shows a running server and a local URL such as `http://0.0.0.0:8000`.
+
+## Troubleshooting
+
+- **`No module named ...` during run/test**: re-run `uv sync` to ensure the environment is fully installed.
+- **Port 8000 already in use**: change the port, for example `--port 8001`.
+- **Tests fail unexpectedly**: run with verbose output using `uv run pytest tests -vv` to inspect stack traces.
