@@ -46,7 +46,7 @@ TOKEN=$(curl -s -X POST http://localhost:8000/token \
 curl -X POST http://localhost:8000/predict/ \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"p1_name":"Novak Djokovic","p2_name":"Rafael Nadal","date":"2016-01-01","testing":true}'
+  -d '{"p1_name":"Fognini F.","p2_name":"Jarry N.","date":"2018-03-04","testing":true}'
 ```
 
 ## Expected output
