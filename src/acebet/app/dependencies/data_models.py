@@ -1,55 +1,38 @@
-from pydantic import BaseModel  # For fancy data validation
+"""Pydantic models used by authentication and prediction endpoints."""
+
+from pydantic import BaseModel
 
 
-# Our secret token class to make life easier
 class Token(BaseModel):
-    """
-    Data model for access tokens.
+    """Response model for bearer token issuance.
 
-    Attributes
-    ----------
-    access_token : str
-        The access token.
-    token_type : str
-        The token type.
-
+    Attributes:
+        access_token: JWT token string.
+        token_type: OAuth token type (for example, ``"bearer"``).
     """
 
     access_token: str
     token_type: str
 
 
-# Token data for the wise ones
 class TokenData(BaseModel):
-    """
-    Data model for token data.
+    """Claims extracted from a decoded token payload.
 
-    Attributes
-    ----------
-    username : str or None
-        The username associated with the token.
-
+    Attributes:
+        username: Username claim when present.
     """
 
     username: str | None = None
 
 
-# A user model that defines the heroes of our story
 class User(BaseModel):
-    """
-    Data model for user information.
+    """Public representation of a user account.
 
-    Attributes
-    ----------
-    username : str
-        The username of the user.
-    email : str or None
-        The email address of the user.
-    full_name : str or None
-        The full name of the user.
-    disabled : bool or None
-        Whether the user is disabled.
-
+    Attributes:
+        username: Unique account username.
+        email: Optional account email address.
+        full_name: Optional full display name.
+        disabled: Flag indicating whether access is disabled.
     """
 
     username: str
@@ -58,48 +41,24 @@ class User(BaseModel):
     disabled: bool | None = None
 
 
-# The secret agent version of a user
 class UserInDB(User):
-    """
-    Data model for user information stored in the database.
+    """Internal user representation including authentication metadata.
 
-    Attributes
-    ----------
-    hashed_password : str
-        The hashed password of the user.
-
+    Attributes:
+        hashed_password: Password hash stored for verification.
     """
 
     hashed_password: str
 
 
-# The oracle's predictions are in!
 class PredictionRequest(BaseModel):
-    """
-    Data model for prediction requests.
+    """Request payload for match outcome prediction.
 
-    Parameters
-    ----------
-    p1_name : str
-        The name of player 1.
-    p2_name : str
-        The name of player 2.
-    date : str
-        The date of the match in 'YYYY-MM-DD' format.
-    testing : bool, optional
-        Whether the prediction is for testing purposes, by default False.
-
-    Attributes
-    ----------
-    p1_name : str
-        The name of player 1.
-    p2_name : str
-        The name of player 2.
-    date : str
-        The date of the match in 'YYYY-MM-DD' format.
-    testing : bool
-        Whether the prediction is for testing purposes.
-
+    Attributes:
+        p1_name: Player name in first position.
+        p2_name: Player name in second position.
+        date: Match date in ``YYYY-MM-DD`` format.
+        testing: Whether to use test assets instead of production assets.
     """
 
     p1_name: str
@@ -108,20 +67,13 @@ class PredictionRequest(BaseModel):
     testing: bool = False
 
 
-# And the answer is...
 class PredictionResponse(BaseModel):
-    """
-    Data model for prediction responses.
+    """Response payload returned by the prediction endpoint.
 
-    Attributes
-    ----------
-    player_name : str or None
-        The name of the predicted winning player.
-    prob : float or None
-        The predicted winning probability.
-    class_ : int or None
-        The class of the prediction (0 or 1).
-
+    Attributes:
+        player_name: Predicted winner name.
+        prob: Predicted win probability as a percentage.
+        class_: Predicted class label.
     """
 
     player_name: str | None = None
