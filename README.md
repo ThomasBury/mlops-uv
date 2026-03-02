@@ -1,6 +1,11 @@
 
 # Mastering Python Project Management with UV: MLOps
 
+[![Docs Build](https://img.shields.io/github/actions/workflow/status/OWNER/mlops-uv/docs.yaml?label=docs&branch=main)](https://github.com/OWNER/mlops-uv/actions/workflows/docs.yaml)
+[![Published Docs](https://img.shields.io/badge/docs-github%20pages-blue)](https://OWNER.github.io/mlops-uv/)
+
+> ℹ️ Replace `OWNER` in the badge and docs links with your GitHub username or organization.
+
 ## How to use
 
 You have two options to follow along with this guide:
@@ -231,3 +236,10 @@ With **AceBet**, we demonstrated how to:
 **Give UV a try**—it might just **replace Pip and Poetry** in your workflow! 🚀  
 
 **Happy Coding!**
+
+
+## Documentation
+
+- Local docs guide: [`docs/getting-started.md`](docs/getting-started.md)
+- Local preview command: `zensical serve`
+- Docs contribution flow: update Markdown in `docs/`, run `zensical build --clean`, preview with `zensical serve`, then open a PR.

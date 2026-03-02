@@ -1,128 +1,77 @@
-import logging
-import numpy as np
+"""FastAPI application entrypoint and route handlers."""
 
+import logging
 from datetime import timedelta
 from pathlib import Path
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from fastapi import Depends, FastAPI, HTTPException, status, Request, Response
+
+import numpy as np
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from starlette.background import BackgroundTask
 from starlette.types import Message
 
-# Import the prediction function and data models
-# from acebet.app.dependencies.logging_user import RouterLoggingMiddleware
-from acebet.app.dependencies.predict_winner import make_prediction
-from acebet.app.dependencies.data_models import (
-    Token,
-    User,
-    UserInDB,
-    PredictionRequest,
-    PredictionResponse,
-)
 from acebet.app.dependencies.auth import (
-    authenticate_user,
-    fake_users_db,
     ACCESS_TOKEN_EXPIRE_MINUTES,
+    authenticate_user,
     create_access_token,
+    fake_users_db,
     get_current_active_user,
     get_current_user,
 )
+from acebet.app.dependencies.data_models import (
+    PredictionRequest,
+    PredictionResponse,
+    Token,
+    User,
+    UserInDB,
+)
+from acebet.app.dependencies.predict_winner import make_prediction
 
-# from acebet.app.dependencies.logging_user import (
-#     log_user_activity,
-#     user_activity_middleware,
-# )
-
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-# Configure the rate limiter
-# create an instance of the Limiter class and configures it
-# to use the get_remote_address function as the key function.
-# The key function is responsible for generating a unique identifier
-# for rate limiting based on the client's IP address.
 limiter = Limiter(key_func=get_remote_address, default_limits=["12/minute"])
-
-# Create an instance of the FastAPI class,
-# which serves as the core of your web application.
-# This instance is used to define routes, middleware,
-# exception handlers, and other configurations for the web service.
-app = FastAPI() # Initialize FastAPI application
-
-# sets the limiter instance you created as a state variable of the FastAPI app.
-# This allows you to access the limiter instance from the route functions using app.state.limiter.
-app.state.limiter = limiter # Set rate limiter instance for the app
-
-# Add an exception handler to the FastAPI app that will catch RateLimitExceeded
-# exceptions raised by the slowapi library. The _rate_limit_exceeded_handler function
-# handles what should be done when a rate limit is exceeded.
-# This ensures that rate limit violations are handled gracefully.
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler) # Add rate limit exception handler
-
-# Add the user activity middleware to the app
-# app.add_middleware(
-#     RouterLoggingMiddleware,
-#     logger=logging.getLogger(__name__)
-# )
-
-# specify the filename of the log file and the logging level.
+app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 logging.basicConfig(filename="info.log", level=logging.DEBUG)
 
 
-# log requests and responses
-def log_info(req_body, res_body):
-    """
-    Logs the request body and the response body.
+def log_info(req_body: bytes, res_body: bytes) -> None:
+    """Write request and response payloads to the configured logger.
 
-    Parameters
-    ----------
-    req_body : bytes
-        The request body.
-    res_body : bytes
-        The response body.
+    Args:
+        req_body: Raw request body bytes.
+        res_body: Raw response body bytes.
     """
     logging.info(req_body)
     logging.info(res_body)
 
 
-# async def: request body access uses awaitable ASGI receive channel.
-async def set_body(request: Request, body: bytes):
-    """
-    Replaces the request's `body` attribute with a function that returns the request body.
+async def set_body(request: Request, body: bytes) -> None:
+    """Patch a request so subsequent consumers can read the same body.
 
-    Parameters
-    ----------
-    request : Request
-        The HTTP request object.
-    body : bytes
-        The request body.
+    Args:
+        request: Incoming request object.
+        body: Raw request body bytes previously read from the stream.
     """
 
     async def receive() -> Message:
         return {"type": "http.request", "body": body}
 
-    request._receive = receive # Replace the original receive method with the new one
+    request._receive = receive
 
 
 @app.middleware("http")
-# Middleware for logging user activity
-# async def: middleware awaits request/response streaming and call_next.
 async def user_logging_middleware(request: Request, call_next):
-    """
-    A middleware function that logs the request body and the response body.
+    """Capture request/response payloads and log them asynchronously.
 
-    Parameters
-    ----------
-    request : Request
-        The HTTP request object.
-    call_next : Callable
-        The next middleware in the chain.
+    Args:
+        request: Incoming request object.
+        call_next: FastAPI callback that executes the downstream handler.
 
-    Returns
-    -------
-    Response
-        The response object.
+    Returns:
+        Response: A rebuilt response that preserves the original payload.
     """
     req_body = await request.body()
     await set_body(request, req_body)
@@ -142,63 +91,41 @@ async def user_logging_middleware(request: Request, call_next):
     )
 
 
-# Home route
 @app.get("/")
-# def: simple synchronous response; no async I/O needed.
-def home():
-    """
-    Welcome Route
-
-    Returns
-    -------
-    dict
-        A welcome message.
-    """
+def home() -> dict[str, str]:
+    """Return a health-style welcome payload for the API root."""
     return {"message": "Welcome to the AceBet API!"}
 
 
-# Rate limiting demonstration route
-# Note: the route decorator must be above the limit decorator, not below it
 @app.get("/limit/")
 @limiter.limit("5/minute")
-# def: synchronous rate-limit demo logic; FastAPI can run it in threadpool.
-def limit(request: Request, user_id: str):
-    """
-    Rate Limiting Demo Route
+def limit(request: Request, user_id: str) -> dict[str, str]:
+    """Return a response for a rate-limited demonstration endpoint.
 
-    Parameters
-    ----------
-    user_id : str
-        The user identifier.
+    Args:
+        request: Incoming request object required by slowapi.
+        user_id: Caller-provided identifier used in the response payload.
 
-    Returns
-    -------
-    dict
-        A success message.
+    Returns:
+        dict[str, str]: Confirmation message with the supplied user identifier.
     """
     return {"message": f"API call successful for {user_id}"}
 
 
-# User authentication route
 @app.post("/token", response_model=Token)
-# def: auth flow uses sync hashing/JWT helpers and no awaited async calls.
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    """
-    User authentication route for generating an access token.
+def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+) -> dict[str, str]:
+    """Authenticate a user and issue a bearer token.
 
-    This function handles the authentication process using the provided
-    username and password. If the authentication is successful, an access token
-    is generated and returned.
+    Args:
+        form_data: OAuth2 credential form with username and password.
 
-    Parameters
-    ----------
-    form_data : OAuth2PasswordRequestForm
-        The form data containing the username and password.
+    Returns:
+        dict[str, str]: Access token and token type fields.
 
-    Returns
-    -------
-    dict
-        The generated access token along with its type.
+    Raises:
+        HTTPException: If the submitted credentials are invalid.
     """
     user = authenticate_user(fake_users_db, form_data.username, form_data.password)
     if not user:
@@ -214,98 +141,63 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-# User profile route
 @app.get("/users/me/", response_model=User)
-# def: returns dependency data only; no async operations.
-def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
-    """
-    User Profile Route
+def read_users_me(
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> UserInDB:
+    """Return the currently authenticated and active user.
 
-    This route returns the profile information of the current active user.
+    Args:
+        current_user: Authenticated user injected by dependency resolution.
 
-    Parameters
-    ----------
-    current_user : UserInDB
-        The current authenticated user.
-
-    Returns
-    -------
-    UserInDB
-        The user profile information.
+    Returns:
+        UserInDB: User record for the current access token.
     """
     return current_user
 
 
 @app.get("/users/me/items/", response_model=list[dict])
-# def: synchronous object construction; no async I/O.
-def read_own_items(current_user: UserInDB = Depends(get_current_active_user)):
-    """
-    User's Item Collection Route
+def read_own_items(
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> list[dict[str, str]]:
+    """Return a placeholder item list associated with the current user.
 
-    This route returns the item collection of the current active user.
+    Args:
+        current_user: Authenticated user injected by dependency resolution.
 
-    Parameters
-    ----------
-    current_user : UserInDB
-        The current authenticated user.
-
-    Returns
-    -------
-    List[dict]
-        The list of items owned by the user.
+    Returns:
+        list[dict[str, str]]: Item metadata including owner username.
     """
     return [{"item_id": "Foo", "owner": current_user.username}]
 
 
-# The prediction
-# async to facilitate efficient handling of multiple operations
-# happening simultaneously, enhancing the responsiveness and performance of the API.
-# although the performance is not really important here
-# Prediction route with user activity logging
 @app.post("/predict/", response_model=PredictionResponse)
-# @limiter.limit("60/minute")
-# def: endpoint runs blocking ML/pandas/joblib work, so let FastAPI threadpool handle it.
 def predict_match_outcome(
     request: PredictionRequest, current_user: UserInDB = Depends(get_current_user)
-):
-    """
-    Prediction Route with Rate Limiting and User Activity Logging
+) -> PredictionResponse:
+    """Predict match outcome probability for the requested players and date.
 
-    This route handles match outcome prediction using the provided data.
+    Args:
+        request: Input payload containing player names, date, and testing mode.
+        current_user: Authenticated user used to protect the endpoint.
 
-    Parameters
-    ----------
-    request : PredictionRequest
-        The prediction request data.
-    current_user : UserInDB
-        The current authenticated user.
-
-    Returns
-    -------
-    PredictionResponse
-        The prediction outcome.
+    Returns:
+        PredictionResponse: Predicted winner, confidence percentage, and class label.
     """
     p1_name = request.p1_name
     p2_name = request.p2_name
     date = request.date
     testing = request.testing
 
-    # Determine the data file and model path based on the 'testing' flag.
-    # If 'testing' is true, use sample data and model path for testing purposes.
-    # Otherwise, use production data and model path.
     if testing:
-        # Use sample data file for testing
         data_file = (
             Path(__file__).resolve().parents[1] / "data" / "atp_data_sample.feather"
         )
-        # Use model path for testing
         model_path = Path(__file__).resolve().parents[1] / "data"
     else:
-        # Use production data file
         data_file = (
             Path(__file__).resolve().parents[3] / "data" / "atp_data_production.feather"
         )
-        # Use production model path
         model_path = Path(__file__).resolve().parents[3]
 
     prob, class_, player_1 = make_prediction(
@@ -315,11 +207,9 @@ def predict_match_outcome(
         p2_name=p2_name,
         date=date,
     )
-    # Ensure prob is a scalar value
     if isinstance(prob, (list, np.ndarray)):
         prob = np.asarray(prob).ravel()[0]
-    # Ensure prob is a scalar value
     prob = float(prob)
-    prob = round((100 * prob), 1)  # Convert to percentage and round
+    prob = round((100 * prob), 1)
 
     return PredictionResponse(player_name=player_1, prob=prob, class_=class_)
