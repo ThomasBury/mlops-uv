@@ -14,7 +14,7 @@ This guide helps you get the AceBet MLOps project running locally with UV.
 ### 1. Clone and enter the repository
 
 ```bash
-git clone <your-repo-url> mlops-uv
+git clone https://github.com/OWNER/REPOSITORY.git mlops-uv
 cd mlops-uv
 ```
 
