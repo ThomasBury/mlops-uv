@@ -5,12 +5,23 @@ AceBet is a FastAPI-based MLOps sample project that demonstrates how to use UV f
 ## Quickstart
 
 ```bash
+cp .env.example .env
+# set ACEBET_SECRET_KEY to a strong generated value in .env
 uv sync
 uv run pytest tests
 uv run fastapi run src/acebet/app/main.py --host 0.0.0.0 --port 8000
 ```
 
+Generate a strong key (pick one):
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(64))"
+# or
+openssl rand -hex 64
+```
+
 Expected quickstart result:
+- Environment file exists at `.env` and contains a strong `ACEBET_SECRET_KEY`.
 - Dependencies install successfully.
 - Test suite passes.
 - API starts locally and responds at `http://localhost:8000`.
