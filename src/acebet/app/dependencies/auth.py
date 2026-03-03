@@ -9,17 +9,11 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from acebet.app.config import (
-    ACEBET_ACCESS_TOKEN_EXPIRE_MINUTES,
-    ACEBET_JWT_ALGORITHM,
-    ACEBET_SECRET_KEY,
-)
+from acebet.app.config import settings
 
 from .data_models import TokenData, UserInDB
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-ACCESS_TOKEN_EXPIRE_MINUTES = ACEBET_ACCESS_TOKEN_EXPIRE_MINUTES
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -128,8 +122,8 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(
         to_encode,
-        ACEBET_SECRET_KEY,
-        algorithm=ACEBET_JWT_ALGORITHM,
+        settings.acebet_secret_key or "acebet-dev-insecure-secret-key",
+        algorithm=settings.acebet_jwt_algorithm,
     )
     return encoded_jwt
 
@@ -154,8 +148,8 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
     try:
         payload = jwt.decode(
             token,
-            ACEBET_SECRET_KEY,
-            algorithms=[ACEBET_JWT_ALGORITHM],
+            settings.acebet_secret_key or "acebet-dev-insecure-secret-key",
+            algorithms=[settings.acebet_jwt_algorithm],
         )
         username: str | None = payload.get("sub")
         if username is None:

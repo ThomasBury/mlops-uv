@@ -60,10 +60,6 @@ class AppSettings(BaseSettings):
 
 settings = AppSettings()
 
-ACEBET_SECRET_KEY = settings.acebet_secret_key or "acebet-dev-insecure-secret-key"
-ACEBET_JWT_ALGORITHM = settings.acebet_jwt_algorithm
-ACEBET_ACCESS_TOKEN_EXPIRE_MINUTES = settings.acebet_access_token_expire_minutes
-
 
 def validate_config() -> None:
     """Validate startup configuration and raise clear runtime errors when invalid."""

@@ -16,7 +16,6 @@ from starlette.types import Message
 
 from acebet.app.config import settings, validate_config
 from acebet.app.dependencies.auth import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
     create_access_token,
     fake_users_db,
@@ -151,7 +150,9 @@ def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(
+        minutes=settings.acebet_access_token_expire_minutes
+    )
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
