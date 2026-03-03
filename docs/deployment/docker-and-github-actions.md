@@ -20,7 +20,7 @@ Example `.env` file for local testing:
 ```dotenv
 ACEBET_SECRET_KEY=replace-with-a-long-random-value
 ACEBET_ENV=production
-ACEBET_DEBUG=false
+ACEBET_LOG_LEVEL=INFO
 ```
 
 ## Build and run locally with Docker
@@ -90,7 +90,7 @@ Use repository or environment secrets for runtime variables, and inject them whe
 | --- | --- | --- |
 | `ACEBET_SECRET_KEY` | `ACEBET_SECRET_KEY` | Required. Keep unique per environment and rotate regularly. |
 | `ACEBET_ENV` | `ACEBET_ENV` | Example values: `staging`, `production`. |
-| `ACEBET_DEBUG` | `ACEBET_DEBUG` | Usually `false` outside local development. |
+| `ACEBET_LOG_LEVEL` | `ACEBET_LOG_LEVEL` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
 
 Example deployment step that writes a temporary env file on the runner and passes it at runtime:
 
@@ -100,7 +100,7 @@ Example deployment step that writes a temporary env file on the runner and passe
     cat > runtime.env <<'ENVVARS'
     ACEBET_SECRET_KEY=${{ secrets.ACEBET_SECRET_KEY }}
     ACEBET_ENV=${{ secrets.ACEBET_ENV }}
-    ACEBET_DEBUG=${{ secrets.ACEBET_DEBUG }}
+    ACEBET_LOG_LEVEL=${{ secrets.ACEBET_LOG_LEVEL }}
     ENVVARS
 
     docker run -d --name acebet --env-file runtime.env -p 8000:80 \

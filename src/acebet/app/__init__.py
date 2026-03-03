@@ -1,0 +1,1 @@
+"""AceBet FastAPI application package."""

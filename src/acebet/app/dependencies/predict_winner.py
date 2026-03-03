@@ -74,6 +74,9 @@ def predict(model: Any, df: pd.DataFrame) -> tuple[Any, Any, str]:
     Raises:
         ValueError: If model inference fails.
     """
+    if df.empty:
+        raise ValueError("No historical match found for the provided players and date.")
+
     predictors = df.columns.drop(
         ["target", "date", "sets_p1", "sets_p2", "b365_p1", "b365_p2", "ps_p1", "ps_p2"]
     )
@@ -108,7 +111,7 @@ def load_model(model_path: str | Path):
 
 def make_prediction(
     data_file: str | Path, model_path: str | Path, p1_name: str, p2_name: str, date: str
-):
+) -> tuple[Any, Any, str]:
     """Load assets and return model predictions for one match specification.
 
     Args:

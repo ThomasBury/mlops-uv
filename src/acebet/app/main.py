@@ -1,6 +1,7 @@
 """FastAPI application entrypoint and route handlers."""
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from slowapi.util import get_remote_address
 from starlette.background import BackgroundTask
 from starlette.types import Message
 
-from acebet.app.config import validate_config
+from acebet.app.config import settings, validate_config
 from acebet.app.dependencies.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
@@ -78,7 +79,9 @@ async def set_body(request: Request, body: bytes) -> None:
 
 
 @app.middleware("http")
-async def user_logging_middleware(request: Request, call_next):
+async def user_logging_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+):
     """Capture request/response payloads and log them asynchronously.
 
     Args:
@@ -222,9 +225,13 @@ def predict_match_outcome(
         p2_name=p2_name,
         date=date,
     )
+    del current_user
     if isinstance(prob, (list, np.ndarray)):
         prob = np.asarray(prob).ravel()[0]
+    if isinstance(class_, (list, np.ndarray)):
+        class_ = np.asarray(class_).ravel()[0]
     prob = float(prob)
     prob = round((100 * prob), 1)
+    class_ = int(class_)
 
     return PredictionResponse(player_name=player_1, prob=prob, class_=class_)

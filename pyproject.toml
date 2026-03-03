@@ -7,7 +7,7 @@ version = {attr = "acebet.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]  # list of folders that contain the packages (["."] by default)
-include = ["data*"]  # package names should match these glob patterns (["*"] by default)
+include = ["acebet*"]  # package names should match these glob patterns (["*"] by default)
 
 [tool.uv]
 dev-dependencies = [

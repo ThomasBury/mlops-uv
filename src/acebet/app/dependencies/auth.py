@@ -1,7 +1,7 @@
 """Authentication and authorization helpers for the FastAPI application."""
 
-from datetime import datetime, timedelta
 import os
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -126,7 +126,9 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, ACEBET_SECRET_KEY, algorithm=ACEBET_JWT_ALGORITHM)
+    encoded_jwt = jwt.encode(
+        to_encode, ACEBET_SECRET_KEY, algorithm=ACEBET_JWT_ALGORITHM
+    )
     return encoded_jwt
 
 
@@ -148,7 +150,9 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, ACEBET_SECRET_KEY, algorithms=[ACEBET_JWT_ALGORITHM])
+        payload = jwt.decode(
+            token, ACEBET_SECRET_KEY, algorithms=[ACEBET_JWT_ALGORITHM]
+        )
         username: str | None = payload.get("sub")
         if username is None:
             raise credentials_exception
