@@ -11,7 +11,7 @@ class AppSettings(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    acebet_env: str = Field(default="dev", alias="ACEBET_ENV")
+    acebet_env: str = Field(alias="ACEBET_ENV")
     acebet_secret_key: str | None = Field(default=None, alias="ACEBET_SECRET_KEY")
     acebet_jwt_algorithm: str = Field(default="HS256", alias="ACEBET_JWT_ALGORITHM")
     acebet_access_token_expire_minutes: int = Field(
