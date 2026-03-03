@@ -21,7 +21,7 @@ dependencies = [
     { name = "passlib" },
     { name = "pyarrow" },
     { name = "pydantic" },
-    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
     { name = "python-jose", extra = ["cryptography"] },
     { name = "python-multipart" },
     { name = "scikit-learn" },

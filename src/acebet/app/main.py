@@ -31,11 +31,19 @@ from acebet.app.dependencies.data_models import (
 )
 from acebet.app.dependencies.predict_winner import make_prediction
 
-limiter = Limiter(key_func=get_remote_address, default_limits=["12/minute"])
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[settings.default_rate_limit],
+)
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-logging.basicConfig(filename="info.log", level=logging.DEBUG)
+logging.basicConfig(
+    filename=settings.log_file,
+    level=getattr(logging, settings.log_level.upper(), logging.DEBUG),
+)
+logger = logging.getLogger(__name__)
+logger.debug("Effective config (secrets redacted): %s", settings.redacted())
 
 
 @app.on_event("startup")
@@ -105,7 +113,7 @@ def home() -> dict[str, str]:
 
 
 @app.get("/limit/")
-@limiter.limit("5/minute")
+@limiter.limit(settings.login_rate_limit)
 def limit(request: Request, user_id: str) -> dict[str, str]:
     """Return a response for a rate-limited demonstration endpoint.
 

@@ -46,6 +46,22 @@ uv sync
 uv run pytest tests
 ```
 
+### 4. Configure environment variables
+
+Configuration is loaded with the following precedence:
+
+1. Process environment (CI/container/runtime)
+2. Local `.env` file for development
+3. In-code defaults for non-sensitive values only
+
+Set a required secret before starting the API:
+
+```bash
+export ACEBET_SECRET_KEY="replace-with-a-long-random-secret"
+```
+
+You can also place the same value in a local `.env` file for development.
+
 ### 5. Start the API
 
 ```bash
@@ -58,6 +74,7 @@ uv run fastapi run src/acebet/app/main.py --host 0.0.0.0 --port 8000
 - `uv sync` completes with a success message and creates/updates `.venv`.
 - `uv run pytest tests` shows all tests passing.
 - `uv run fastapi run ...` shows a running server and a local URL such as `http://0.0.0.0:8000`.
+- Startup logs include an `Effective config (secrets redacted)` debug message for troubleshooting.
 
 ## Troubleshooting
 
