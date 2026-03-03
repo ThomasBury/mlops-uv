@@ -18,19 +18,35 @@ git clone https://github.com/OWNER/REPOSITORY.git mlops-uv
 cd mlops-uv
 ```
 
-### 2. Install dependencies
+### 2. Create local environment config
+
+```bash
+cp .env.example .env
+```
+
+Set `ACEBET_SECRET_KEY` in `.env` to a strong generated value.
+
+Generate a strong key (pick one):
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(64))"
+# or
+openssl rand -hex 64
+```
+
+### 3. Install dependencies
 
 ```bash
 uv sync
 ```
 
-### 3. Run tests
+### 4. Run tests
 
 ```bash
 uv run pytest tests
 ```
 
-### 4. Start the API
+### 5. Start the API
 
 ```bash
 uv run fastapi run src/acebet/app/main.py --host 0.0.0.0 --port 8000
@@ -38,6 +54,7 @@ uv run fastapi run src/acebet/app/main.py --host 0.0.0.0 --port 8000
 
 ## Expected output
 
+- `.env` exists (copied from `.env.example`) and includes a strong `ACEBET_SECRET_KEY`.
 - `uv sync` completes with a success message and creates/updates `.venv`.
 - `uv run pytest tests` shows all tests passing.
 - `uv run fastapi run ...` shows a running server and a local URL such as `http://0.0.0.0:8000`.
