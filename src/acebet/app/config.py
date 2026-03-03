@@ -1,65 +1,54 @@
-"""Application configuration with explicit source precedence."""
+"""Application configuration loaded and validated from environment variables."""
 
-from __future__ import annotations
+from pydantic import Field, ValidationError, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-import os
-from dataclasses import dataclass
-
-from dotenv import load_dotenv
+DEV_ENVIRONMENTS = {"dev", "development", "local", "test", "testing"}
 
 
-@dataclass(frozen=True)
-class Settings:
-    """Runtime settings loaded from environment sources.
+class AppSettings(BaseSettings):
+    """Application settings sourced from environment variables."""
 
-    Precedence order is:
-    1. Process environment variables.
-    2. Local ``.env`` values (loaded only when keys are not already set).
-    3. In-code defaults for non-sensitive values.
-    """
+    model_config = SettingsConfigDict(extra="ignore")
 
-    secret_key: str
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-    default_rate_limit: str = "12/minute"
-    login_rate_limit: str = "5/minute"
-    log_level: str = "DEBUG"
-    log_file: str = "info.log"
-
-    def redacted(self) -> dict[str, str | int]:
-        """Return configuration values safe for debug logging."""
-        return {
-            "algorithm": self.algorithm,
-            "access_token_expire_minutes": self.access_token_expire_minutes,
-            "default_rate_limit": self.default_rate_limit,
-            "login_rate_limit": self.login_rate_limit,
-            "log_level": self.log_level,
-            "log_file": self.log_file,
-        }
-
-
-def load_settings() -> Settings:
-    """Load application settings with env > .env > default precedence."""
-    load_dotenv(override=False)
-
-    secret_key = os.getenv("ACEBET_SECRET_KEY")
-    if not secret_key:
-        raise ValueError(
-            "Missing ACEBET_SECRET_KEY. Set it in the process environment "
-            "or a local .env file."
-        )
-
-    return Settings(
-        secret_key=secret_key,
-        algorithm=os.getenv("ACEBET_ALGORITHM", "HS256"),
-        access_token_expire_minutes=int(
-            os.getenv("ACEBET_ACCESS_TOKEN_EXPIRE_MINUTES", "30")
-        ),
-        default_rate_limit=os.getenv("ACEBET_DEFAULT_RATE_LIMIT", "12/minute"),
-        login_rate_limit=os.getenv("ACEBET_LOGIN_RATE_LIMIT", "5/minute"),
-        log_level=os.getenv("ACEBET_LOG_LEVEL", "DEBUG"),
-        log_file=os.getenv("ACEBET_LOG_FILE", "info.log"),
+    acebet_env: str = Field(alias="ACEBET_ENV")
+    acebet_secret_key: str | None = Field(default=None, alias="ACEBET_SECRET_KEY")
+    acebet_jwt_algorithm: str = Field(default="HS256", alias="ACEBET_JWT_ALGORITHM")
+    acebet_access_token_expire_minutes: int = Field(
+        default=30,
+        alias="ACEBET_ACCESS_TOKEN_EXPIRE_MINUTES",
     )
 
+    @field_validator("acebet_access_token_expire_minutes")
+    @classmethod
+    def validate_expiry_minutes(cls, value: int) -> int:
+        """Ensure token expiration minutes is a positive integer."""
+        if value <= 0:
+            raise ValueError("ACEBET_ACCESS_TOKEN_EXPIRE_MINUTES must be greater than 0.")
+        return value
 
-settings = load_settings()
+    @model_validator(mode="after")
+    def validate_secret_key_in_non_dev(self) -> "AppSettings":
+        """Require a secret key outside development-like environments."""
+        env_name = self.acebet_env.strip().lower()
+        if env_name not in DEV_ENVIRONMENTS and not self.acebet_secret_key:
+            raise ValueError(
+                "Missing required environment variable ACEBET_SECRET_KEY in "
+                "non-development environments."
+            )
+        return self
+
+
+settings = AppSettings()
+
+ACEBET_SECRET_KEY = settings.acebet_secret_key or "acebet-dev-insecure-secret-key"
+ACEBET_JWT_ALGORITHM = settings.acebet_jwt_algorithm
+ACEBET_ACCESS_TOKEN_EXPIRE_MINUTES = settings.acebet_access_token_expire_minutes
+
+
+def validate_config() -> None:
+    """Validate startup configuration and raise clear runtime errors when invalid."""
+    try:
+        AppSettings()
+    except ValidationError as exc:
+        raise RuntimeError(f"Invalid application configuration: {exc}") from exc

@@ -1,6 +1,7 @@
 """Authentication and authorization helpers for the FastAPI application."""
 
 from datetime import datetime, timedelta
+import os
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -8,28 +9,43 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from acebet.app.config import settings
+from acebet.app.config import (
+    ACEBET_ACCESS_TOKEN_EXPIRE_MINUTES,
+    ACEBET_JWT_ALGORITHM,
+    ACEBET_SECRET_KEY,
+)
 
 from .data_models import TokenData, UserInDB
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-SECRET_KEY = settings.secret_key
-ALGORITHM = settings.algorithm
-ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
-
-fake_users_db = {
-    "johndoe": {
-        "username": "johndoe",
-        "full_name": "John Doe",
-        "email": "johndoe@example.com",
-        "hashed_password": (
-            "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
-        ),
-        "disabled": False,
-    }
-}
+ACCESS_TOKEN_EXPIRE_MINUTES = ACEBET_ACCESS_TOKEN_EXPIRE_MINUTES
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _build_fake_users_db() -> dict[str, dict[str, str | bool]]:
+    """Build the in-memory demo user database from environment variables.
+
+    Returns:
+        dict[str, dict[str, str | bool]]: User mapping keyed by username.
+    """
+    demo_username = os.getenv("ACEBET_DEMO_USERNAME", "johndoe")
+    demo_password = os.getenv("ACEBET_DEMO_PASSWORD", "secret")
+    demo_email = os.getenv("ACEBET_DEMO_EMAIL", "johndoe@example.com")
+    demo_full_name = os.getenv("ACEBET_DEMO_FULL_NAME", "John Doe")
+
+    return {
+        demo_username: {
+            "username": demo_username,
+            "full_name": demo_full_name,
+            "email": demo_email,
+            "hashed_password": pwd_context.hash(demo_password),
+            "disabled": False,
+        }
+    }
+
+
+fake_users_db = _build_fake_users_db()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -110,7 +126,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, ACEBET_SECRET_KEY, algorithm=ACEBET_JWT_ALGORITHM)
     return encoded_jwt
 
 
@@ -132,7 +148,7 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, ACEBET_SECRET_KEY, algorithms=[ACEBET_JWT_ALGORITHM])
         username: str | None = payload.get("sub")
         if username is None:
             raise credentials_exception
