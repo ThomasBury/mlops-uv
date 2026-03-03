@@ -14,8 +14,9 @@ COPY pyproject.toml uv.lock ./
 # Install project dependencies (without installing the project itself yet).
 RUN uv sync --frozen --no-cache --no-install-project
 
-# Copy application source.
+# Copy application source and runtime data assets.
 COPY src ./src
+COPY data ./data
 
 # Install the local project into the existing virtual environment.
 RUN uv sync --frozen --no-cache
