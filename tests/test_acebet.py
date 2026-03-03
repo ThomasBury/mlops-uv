@@ -1,4 +1,6 @@
+import os
 import unittest
+
 from fastapi.testclient import TestClient
 
 # Initializing unit tests with the TestClient to simulate HTTP requests.
@@ -9,10 +11,12 @@ class TestAceBetAPI(unittest.TestCase):
     def setUp(self):
         # Setting up the test environment with the FastAPI TestClient instance.
         self.client = TestClient(app)
+        self.demo_username = os.getenv("ACEBET_DEMO_USERNAME", "johndoe")
+        self.demo_password = os.getenv("ACEBET_DEMO_PASSWORD", "secret")
 
     def test_login_for_access_token(self):
         # Testing user authentication by sending a POST request for an access token.
-        form_data = {"username": "johndoe", "password": "secret"}
+        form_data = {"username": self.demo_username, "password": self.demo_password}
         # Sending the POST request.
         response = self.client.post("/token", data=form_data)
         # Asserting the expected response status (HTTP 200 - OK).
@@ -32,7 +36,7 @@ class TestAceBetAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         # Verifying the retrieved user data against the expected values.
         data = response.json()
-        self.assertEqual(data["username"], "johndoe")
+        self.assertEqual(data["username"], self.demo_username)
 
     def test_read_own_items(self):
         # Testing retrieval of user-owned items using an access token.
@@ -45,7 +49,7 @@ class TestAceBetAPI(unittest.TestCase):
         # Validating the retrieved item data against the user's ownership.
         data = response.json()
         self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["owner"], "johndoe")
+        self.assertEqual(data[0]["owner"], self.demo_username)
 
     def test_predict_match_outcome(self):
         # Testing match outcome prediction using an access token.
@@ -70,7 +74,7 @@ class TestAceBetAPI(unittest.TestCase):
 
     def get_access_token(self):
         # Simulating a user login to acquire an access token.
-        form_data = {"username": "johndoe", "password": "secret"}
+        form_data = {"username": self.demo_username, "password": self.demo_password}
         # Sending the login POST request and extracting the access token.
         response = self.client.post("/token", data=form_data)
         data = response.json()

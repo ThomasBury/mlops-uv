@@ -30,6 +30,17 @@ ls -1 model_*.joblib | tail -n 1
 
 ## Inference workflow
 
+### Demo authentication credentials
+
+The tutorial authentication account is configured with environment variables at API startup:
+
+- `ACEBET_DEMO_USERNAME` (default: `johndoe`)
+- `ACEBET_DEMO_PASSWORD` (default: `secret`)
+- `ACEBET_DEMO_EMAIL` (default: `johndoe@example.com`)
+- `ACEBET_DEMO_FULL_NAME` (default: `John Doe`)
+
+> These values are for demo/tutorial usage only and are not production authentication controls.
+
 ### 1. Run local API for inference requests
 
 ```bash
@@ -41,7 +52,7 @@ uv run fastapi run src/acebet/app/main.py --host 0.0.0.0 --port 8000
 ```bash
 curl -X POST http://localhost:8000/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=johndoe&password=secret"
+  -d "username=${ACEBET_DEMO_USERNAME:-johndoe}&password=${ACEBET_DEMO_PASSWORD:-secret}"
 ```
 
 ### 3. Send a prediction request
