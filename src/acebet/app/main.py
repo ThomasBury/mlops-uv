@@ -1,6 +1,7 @@
 """FastAPI application entrypoint and route handlers."""
 
 import logging
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from slowapi.util import get_remote_address
 from starlette.background import BackgroundTask
 from starlette.types import Message
 
-from acebet.app.config import validate_config
+from acebet.app.config import settings, validate_config
 from acebet.app.dependencies.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
@@ -33,24 +34,25 @@ from acebet.app.dependencies.predict_winner import make_prediction
 
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=[settings.default_rate_limit],
+    default_limits=[settings.acebet_default_rate_limit],
 )
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Run startup validations before serving requests."""
+    validate_config()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 logging.basicConfig(
-    filename=settings.log_file,
-    level=getattr(logging, settings.log_level.upper(), logging.DEBUG),
+    filename=settings.acebet_log_file,
+    level=getattr(logging, settings.acebet_log_level.upper(), logging.DEBUG),
 )
 logger = logging.getLogger(__name__)
 logger.debug("Effective config (secrets redacted): %s", settings.redacted())
-
-
-@app.on_event("startup")
-def validate_startup_config() -> None:
-    """Validate required runtime configuration before serving requests."""
-    validate_config()
-
 
 def log_info(req_body: bytes, res_body: bytes) -> None:
     """Write request and response payloads to the configured logger.
@@ -113,7 +115,7 @@ def home() -> dict[str, str]:
 
 
 @app.get("/limit/")
-@limiter.limit(settings.login_rate_limit)
+@limiter.limit(settings.acebet_login_rate_limit)
 def limit(request: Request, user_id: str) -> dict[str, str]:
     """Return a response for a rate-limited demonstration endpoint.
 
