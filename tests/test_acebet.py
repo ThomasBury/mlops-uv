@@ -1,5 +1,9 @@
+import os
 import unittest
+
 from fastapi.testclient import TestClient
+
+os.environ.setdefault("ACEBET_SECRET_KEY", "test-secret-key")
 
 # Initializing unit tests with the TestClient to simulate HTTP requests.
 from acebet.app.main import app
