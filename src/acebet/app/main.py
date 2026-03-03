@@ -13,6 +13,7 @@ from slowapi.util import get_remote_address
 from starlette.background import BackgroundTask
 from starlette.types import Message
 
+from acebet.app.config import validate_config
 from acebet.app.dependencies.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
@@ -35,6 +36,12 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 logging.basicConfig(filename="info.log", level=logging.DEBUG)
+
+
+@app.on_event("startup")
+def validate_startup_config() -> None:
+    """Validate required runtime configuration before serving requests."""
+    validate_config()
 
 
 def log_info(req_body: bytes, res_body: bytes) -> None:
