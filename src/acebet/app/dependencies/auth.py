@@ -1,6 +1,7 @@
 """Authentication and authorization helpers for the FastAPI application."""
 
 from datetime import datetime, timedelta
+import os
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -19,19 +20,32 @@ from .data_models import TokenData, UserInDB
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 ACCESS_TOKEN_EXPIRE_MINUTES = ACEBET_ACCESS_TOKEN_EXPIRE_MINUTES
 
-fake_users_db = {
-    "johndoe": {
-        "username": "johndoe",
-        "full_name": "John Doe",
-        "email": "johndoe@example.com",
-        "hashed_password": (
-            "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
-        ),
-        "disabled": False,
-    }
-}
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _build_fake_users_db() -> dict[str, dict[str, str | bool]]:
+    """Build the in-memory demo user database from environment variables.
+
+    Returns:
+        dict[str, dict[str, str | bool]]: User mapping keyed by username.
+    """
+    demo_username = os.getenv("ACEBET_DEMO_USERNAME", "johndoe")
+    demo_password = os.getenv("ACEBET_DEMO_PASSWORD", "secret")
+    demo_email = os.getenv("ACEBET_DEMO_EMAIL", "johndoe@example.com")
+    demo_full_name = os.getenv("ACEBET_DEMO_FULL_NAME", "John Doe")
+
+    return {
+        demo_username: {
+            "username": demo_username,
+            "full_name": demo_full_name,
+            "email": demo_email,
+            "hashed_password": pwd_context.hash(demo_password),
+            "disabled": False,
+        }
+    }
+
+
+fake_users_db = _build_fake_users_db()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

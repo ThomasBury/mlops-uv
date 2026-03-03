@@ -16,6 +16,17 @@ uv run fastapi run src/acebet/app/main.py --host 0.0.0.0 --port 8000
 
 ## Common sync endpoint calls
 
+### Demo authentication credentials
+
+The tutorial authentication account is configured with environment variables at API startup:
+
+- `ACEBET_DEMO_USERNAME` (default: `johndoe`)
+- `ACEBET_DEMO_PASSWORD` (default: `secret`)
+- `ACEBET_DEMO_EMAIL` (default: `johndoe@example.com`)
+- `ACEBET_DEMO_FULL_NAME` (default: `John Doe`)
+
+> These values are for demo/tutorial usage only and are not production authentication controls.
+
 ### 1. Health/home endpoint
 
 ```bash
@@ -33,7 +44,7 @@ curl "http://localhost:8000/limit/?user_id=test-user"
 ```bash
 curl -X POST http://localhost:8000/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=johndoe&password=secret"
+  -d "username=${ACEBET_DEMO_USERNAME:-johndoe}&password=${ACEBET_DEMO_PASSWORD:-secret}"
 ```
 
 ### 4. Protected prediction endpoint
@@ -41,7 +52,7 @@ curl -X POST http://localhost:8000/token \
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8000/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=johndoe&password=secret" | jq -r '.access_token')
+  -d "username=${ACEBET_DEMO_USERNAME:-johndoe}&password=${ACEBET_DEMO_PASSWORD:-secret}" | jq -r '.access_token')
 
 curl -X POST http://localhost:8000/predict/ \
   -H "Authorization: Bearer ${TOKEN}" \
