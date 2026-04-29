@@ -1,0 +1,47 @@
+[project]
+site_name = "AceBet Documentation"
+site_url = "https://thomasbury.github.io/mlops-uv/"
+
+[build]
+source = "docs"
+output = "site"
+
+[[nav]]
+title = "Home"
+path = "index.md"
+
+[[nav]]
+title = "Getting Started"
+path = "getting-started.md"
+
+[[nav]]
+title = "Classical MLOps Tutorial"
+path = "classical-mlops-tutorial.md"
+
+[[nav]]
+title = "Developer Workflow"
+path = "uv/uv-workflows-for-mlops.md"
+
+[[nav]]
+title = "User Guide Overview"
+path = "user-guide/overview.md"
+
+[[nav]]
+title = "Training and Inference"
+path = "user-guide/training-and-inference.md"
+
+[[nav]]
+title = "API Endpoints"
+path = "api/sync-endpoints.md"
+
+[[nav]]
+title = "CI/CD"
+path = "cicd/github-actions-pipeline.md"
+
+[[nav]]
+title = "Deployment"
+path = "deployment/docker-and-github-actions.md"
+
+[[nav]]
+title = "Tutorial Boundaries"
+path = "tutorial-shortcuts-vs-production.md"
