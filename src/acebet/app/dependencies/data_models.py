@@ -1,7 +1,7 @@
-from pydantic import BaseModel  # For fancy data validation
+from datetime import date
+from pydantic import BaseModel
 
 
-# Our secret token class to make life easier
 class Token(BaseModel):
     """
     Data model for access tokens.
@@ -19,7 +19,6 @@ class Token(BaseModel):
     token_type: str
 
 
-# Token data for the wise ones
 class TokenData(BaseModel):
     """
     Data model for token data.
@@ -34,7 +33,6 @@ class TokenData(BaseModel):
     username: str | None = None
 
 
-# A user model that defines the heroes of our story
 class User(BaseModel):
     """
     Data model for user information.
@@ -58,7 +56,6 @@ class User(BaseModel):
     disabled: bool | None = None
 
 
-# The secret agent version of a user
 class UserInDB(User):
     """
     Data model for user information stored in the database.
@@ -73,7 +70,6 @@ class UserInDB(User):
     hashed_password: str
 
 
-# The oracle's predictions are in!
 class PredictionRequest(BaseModel):
     """
     Data model for prediction requests.
@@ -84,10 +80,26 @@ class PredictionRequest(BaseModel):
         The name of player 1.
     p2_name : str
         The name of player 2.
-    date : str
-        The date of the match in 'YYYY-MM-DD' format.
+    date : date
+        The date of the match.
     testing : bool, optional
-        Whether the prediction is for testing purposes, by default False.
+        Whether to use the testing asset resolution path.
+    atp : int, optional
+        ATP points/category for the tournament.
+    location : str, optional
+        City or country where the match is played.
+    tournament : str, optional
+        Name of the tournament.
+    series : str, optional
+        Tournament series (e.g., Grand Slam, ATP500).
+    court : str, optional
+        Type of court (e.g., Indoor, Outdoor).
+    surface : str, optional
+        Type of surface (e.g., Hard, Clay, Grass).
+    round : str, optional
+        The round of the tournament.
+    best_of : int, optional
+        The number of sets (e.g., 3 or 5).
 
     Attributes
     ----------
@@ -95,20 +107,26 @@ class PredictionRequest(BaseModel):
         The name of player 1.
     p2_name : str
         The name of player 2.
-    date : str
-        The date of the match in 'YYYY-MM-DD' format.
+    date : date
+        The date of the match.
     testing : bool
-        Whether the prediction is for testing purposes.
-
+        Whether the testing asset resolution path is used.
     """
 
     p1_name: str
     p2_name: str
-    date: str
+    date: date
     testing: bool = False
+    atp: int | None = None
+    location: str | None = None
+    tournament: str | None = None
+    series: str | None = None
+    court: str | None = None
+    surface: str | None = None
+    round: str | None = None
+    best_of: int | None = None
 
 
-# And the answer is...
 class PredictionResponse(BaseModel):
     """
     Data model for prediction responses.

@@ -1,33 +1,24 @@
-"""
-Authorization and authentication module.
-Heavily inspired from https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/
-"""
+"""Authentication helpers for the tutorial API."""
 
-# Let's import all the magical stuff we need!
-from datetime import datetime, timedelta  # For handling time
-from typing import Annotated, Dict, Union  # For fancy type hints
+from datetime import datetime, timedelta, timezone
+from typing import Annotated, Dict, Union
 
-# Time for FastAPI to shine!
+import bcrypt
+
 from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import OAuth2PasswordBearer  # For authentication
-from jose import JWTError, jwt  # For dealing with tokens
-from passlib.context import CryptContext  # For password hashing
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
 
-# Importing the super cool prediction function
 from .data_models import TokenData, UserInDB
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Let's have some secret sauce for encryption
+# Static JWT configuration used by the tutorial application.
 SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
-
-# we're using the HS256 algorithm for tokens
 ALGORITHM = "HS256"
-
-# Tokens, they typically last only for a short while (in minutes)
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Prepare a database of imaginary users, because we love imagination
+# In-memory tutorial user store.
 fake_users_db = {
     "johndoe": {
         "username": "johndoe",
@@ -38,14 +29,7 @@ fake_users_db = {
     }
 }
 
-# The secret code to lock and unlock passwords
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# The VIP pass to enter with style
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-
-# The trusty password checker
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verify a plain text password against a hashed password.
@@ -63,10 +47,15 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     bool
         True if the passwords match, False otherwise.
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except ValueError:
+        return False
 
 
-# The password hasher
 def get_password_hash(password: str) -> str:
     """
     Generate a hash of a given password.
@@ -81,10 +70,7 @@ def get_password_hash(password: str) -> str:
     str
         The hashed password.
     """
-    return pwd_context.hash(password)
-
-
-# The user detective
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def get_user(db: Dict[str, dict], username: str) -> Union[UserInDB, None]:
@@ -109,7 +95,6 @@ def get_user(db: Dict[str, dict], username: str) -> Union[UserInDB, None]:
         return UserInDB(**user_dict)
 
 
-# The secret agent
 def authenticate_user(
     fake_db: Dict[str, dict], username: str, password: str
 ) -> Union[UserInDB, bool]:
@@ -140,7 +125,6 @@ def authenticate_user(
     return user
 
 
-# The token creator
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """
     Create an access token.
@@ -160,26 +144,17 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     """
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 
-# The security guard checking your identity
 async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
     """
-    Retrieve the current user based on the provided token.
-    This function is responsible for extracting the user's
-    information from the JWT token and returning it.
-    It is used to authenticate the user and retrieve their user information.
-    The token contains a "sub" claim, which typically represents the
-    username or user identifier. This function decodes the token
-    and extracts this username, then queries the database of users to
-    find the corresponding user record.
-    This dependency is used in routes that require authentication
+    Decode a bearer token and return the matching tutorial user.
 
     Parameters
     ----------
@@ -191,14 +166,12 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
     UserInDB
         User information if authenticated, raises an HTTPException if not.
     """
-    # Oops, who's that trying to sneak in?
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        # The bearer of this token has a story to tell
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
@@ -206,25 +179,17 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
         token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    # The guardian checks the database of heroes
     user = get_user(fake_users_db, username=token_data.username)
     if user is None:
         raise credentials_exception
     return user
 
 
-# The gatekeeper checking your access rights
 async def get_current_active_user(
     current_user: UserInDB = Depends(get_current_user),
 ) -> UserInDB:
     """
-    Retrieve the current active user based on the provided user information.
-    This function builds on top of get_current_user and adds an additional
-    check to see if the user is active or disabled. If the user is marked
-    as disabled in the database, this function raises an HTTPException with a
-    status code of 400 and a message indicating that the user is inactive.
-    This can be used in routes where you want to ensure that only active
-    users can access certain resources
+    Return the authenticated user after checking the disabled flag.
 
     Parameters
     ----------
@@ -244,22 +209,5 @@ async def get_current_active_user(
 def get_user_identifier(
     request: Request, current_user: UserInDB = Depends(get_current_user)
 ) -> str:
-    """
-    Get the user identifier for rate limiting.
-
-    This function returns the username of the current authenticated user,
-    which will be used as the identifier for rate limiting.
-
-    Parameters
-    ----------
-    request : Request
-        The FastAPI Request object.
-    current_user : UserInDB
-        The current authenticated user, obtained from the Depends(get_current_user) dependency.
-
-    Returns
-    -------
-    str
-        The username of the current user as the rate limiting identifier.
-    """
+    """Return the authenticated username for rate-limiting helpers."""
     return current_user.username

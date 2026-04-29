@@ -1,90 +1,210 @@
-import unittest
+import pytest
 from fastapi.testclient import TestClient
 
-# Initializing unit tests with the TestClient to simulate HTTP requests.
 from acebet.app.main import app
+from acebet.app.dependencies.auth import get_password_hash, verify_password
+from acebet.dataprep.dataprep import prepare_data
+from acebet.features import (
+    build_latest_player_stats,
+    build_match_feature_row,
+    select_model_features,
+)
+from acebet.train.train import prepare_data_for_training_clf, train_model
 
 
-class TestAceBetAPI(unittest.TestCase):
-    def setUp(self):
-        # Setting up the test environment with the FastAPI TestClient instance.
-        self.client = TestClient(app)
+@pytest.fixture
+def client():
+    with TestClient(app) as test_client:
+        yield test_client
 
-    def test_login_for_access_token(self):
-        # Testing user authentication by sending a POST request for an access token.
-        form_data = {"username": "johndoe", "password": "secret"}
-        # Sending the POST request.
-        response = self.client.post("/token", data=form_data)
-        # Asserting the expected response status (HTTP 200 - OK).
-        self.assertEqual(response.status_code, 200)
-        # Validating the response content for the presence of access token.
-        data = response.json()
-        self.assertIn("access_token", data)
-        self.assertEqual(data["token_type"], "bearer")
 
-    def test_read_users_me(self):
-        # Testing retrieval of user profile using an access token.
-        access_token = self.get_access_token()
-        headers = {"Authorization": f"Bearer {access_token}"}
-        # Sending a GET request for the user's profile.
-        response = self.client.get("/users/me/", headers=headers)
-        # Ensuring the expected response status (HTTP 200 - OK).
-        self.assertEqual(response.status_code, 200)
-        # Verifying the retrieved user data against the expected values.
-        data = response.json()
-        self.assertEqual(data["username"], "johndoe")
+@pytest.fixture
+def access_token(client: TestClient) -> str:
+    response = client.post(
+        "/token",
+        data={"username": "johndoe", "password": "secret"},
+    )
+    assert response.status_code == 200
+    return response.json()["access_token"]
 
-    def test_read_own_items(self):
-        # Testing retrieval of user-owned items using an access token.
-        access_token = self.get_access_token()
-        headers = {"Authorization": f"Bearer {access_token}"}
-        # Sending a GET request for the user's items.
-        response = self.client.get("/users/me/items/", headers=headers)
-        # Checking the expected response status (HTTP 200 - OK).
-        self.assertEqual(response.status_code, 200)
-        # Validating the retrieved item data against the user's ownership.
-        data = response.json()
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["owner"], "johndoe")
 
-    def test_predict_match_outcome(self):
-        # Testing match outcome prediction using an access token.
-        access_token = self.get_access_token()
-        headers = {"Authorization": f"Bearer {access_token}"}
-        # Preparing prediction data - player names and match date.
-        prediction_data = {
+@pytest.fixture
+def auth_headers(access_token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {access_token}"}
+
+
+def test_login_for_access_token(client: TestClient):
+    response = client.post(
+        "/token",
+        data={"username": "johndoe", "password": "secret"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
+
+
+def test_bcrypt_helpers_support_seeded_and_new_hashes():
+    seeded_hash = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
+
+    assert verify_password("secret", seeded_hash)
+
+    hashed_password = get_password_hash("another-secret")
+    assert hashed_password.startswith("$2b$")
+    assert verify_password("another-secret", hashed_password)
+    assert not verify_password("wrong-password", hashed_password)
+
+
+def test_read_users_me(client: TestClient, auth_headers: dict[str, str]):
+    response = client.get("/users/me/", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "johndoe"
+
+
+def test_read_own_items(client: TestClient, auth_headers: dict[str, str]):
+    response = client.get("/users/me/items/", headers=auth_headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["owner"] == "johndoe"
+
+
+def test_predict_match_outcome(client: TestClient, auth_headers: dict[str, str]):
+    response = client.post(
+        "/predict/",
+        headers=auth_headers,
+        json={
             "p1_name": "Fognini F.",
             "p2_name": "Jarry N.",
             "date": "2018-03-04",
             "testing": True,
-        }
-        # Sending a POST request to predict the match outcome.
-        response = self.client.post("/predict/", headers=headers, json=prediction_data)
-        # Verifying the expected response status (HTTP 200 - OK).
-        self.assertEqual(response.status_code, 200)
-        # Validating the prediction result - player name, probability, and class.
-        data = response.json()
-        self.assertIn("player_name", data)
-        self.assertIn("prob", data)
-        self.assertIn("class_", data)
+        },
+    )
 
-    def get_access_token(self):
-        # Simulating a user login to acquire an access token.
-        form_data = {"username": "johndoe", "password": "secret"}
-        # Sending the login POST request and extracting the access token.
-        response = self.client.post("/token", data=form_data)
-        data = response.json()
-        return data["access_token"]
+    assert response.status_code == 200
+    data = response.json()
+    assert "player_name" in data
+    assert "prob" in data
+    assert "class_" in data
+    assert 0.0 <= data["prob"] <= 100.0
+    assert data["class_"] in [0, 1]
 
 
-# Executing the test suite if run as the main module.
-if __name__ == "__main__":
-    unittest.main()
+def test_predict_match_outcome_with_production_data(
+    client: TestClient, auth_headers: dict[str, str]
+):
+    response = client.post(
+        "/predict/",
+        headers=auth_headers,
+        json={
+            "p1_name": "Fognini F.",
+            "p2_name": "Jarry N.",
+            "date": "2018-03-04",
+            "testing": False,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "player_name" in data
+    assert "prob" in data
+    assert "class_" in data
+    assert 0.0 <= data["prob"] <= 100.0
+    assert data["class_"] in [0, 1]
 
 
-# {
-#   "p1_name": "Fognini F.",
-#   "p2_name": "Jarry N.",
-#   "date": "2018-03-04",
-#   "testing": false
-# }
+def test_predict_match_outcome_for_future_match_uses_player_state(
+    client: TestClient, auth_headers: dict[str, str]
+):
+    response = client.post(
+        "/predict/",
+        headers=auth_headers,
+        json={
+            "p1_name": "Fognini F.",
+            "p2_name": "Jarry N.",
+            "date": "2030-01-01",
+            "testing": True,
+            "surface": "Clay",
+            "round": "Final",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["player_name"] == "Fognini F."
+    assert 0.0 <= data["prob"] <= 100.0
+    assert data["class_"] in [0, 1]
+
+
+def test_prepared_dataset_is_valid():
+    df = prepare_data()
+
+    assert not df.empty
+    assert df["date"].is_monotonic_increasing
+    assert "target" in df.columns
+    assert "rank_diff" in df.columns
+    assert "best_ranked" in df.columns
+
+
+def test_latest_player_stats_uses_latest_player_appearance():
+    df = prepare_data()
+    stats = build_latest_player_stats(df)
+    fognini_stats = stats.set_index("player").loc["Fognini F."]
+    appearances = df[(df["p1"].eq("Fognini F.")) | (df["p2"].eq("Fognini F."))]
+
+    assert "Fognini F." in set(stats["player"])
+    assert fognini_stats["as_of_date"] == appearances["date"].max()
+
+
+def test_build_match_feature_row_assembles_online_features():
+    df = prepare_data()
+    stats = build_latest_player_stats(df)
+    features = build_match_feature_row(
+        p1_name="Fognini F.",
+        p2_name="Jarry N.",
+        date="2030-01-01",
+        stats_context=stats,
+        match_context={"surface": "Clay", "round": "Final"},
+    )
+
+    assert features.loc[0, "p1"] == "Fognini F."
+    assert features.loc[0, "p2"] == "Jarry N."
+    assert features.loc[0, "surface"] == "Clay"
+    assert features.loc[0, "round"] == "Final"
+    assert features.loc[0, "year"] == 2030
+    assert features.loc[0, "best_ranked"] in ["p1", "p2"]
+    assert 0.0 <= features.loc[0, "proba_elo"] <= 1.0
+
+
+def test_feature_contract_excludes_post_match_columns():
+    X, y = prepare_data_for_training_clf("2015-03-04", "2017-03-04")
+
+    assert len(X) == len(y)
+    for forbidden_column in ["target", "date", "sets_p1", "sets_p2", "comment"]:
+        assert forbidden_column not in X.columns
+
+
+def test_training_exports_model_artifact(tmp_path):
+    result = train_model(
+        "2015-03-04",
+        "2017-03-04",
+        output_dir=tmp_path,
+        export_joblib=True,
+    )
+
+    assert result.exported_model_path is not None
+    assert result.exported_model_path.exists()
+    assert "accuracy" in result.metrics
+    assert "log_loss" in result.metrics
+    assert 0.0 <= result.metrics["accuracy"] <= 1.0
+
+
+def test_select_model_features_tolerates_missing_optional_drop_columns():
+    df = prepare_data().head(1).drop(columns=["comment"])
+    features = select_model_features(df)
+
+    assert "comment" not in features.columns
+    assert "target" not in features.columns

@@ -1,4 +1,3 @@
-"""init module, providing information about the arfs package
-"""
+"""AceBet package."""
 
 __version__ = "0.0.2"
