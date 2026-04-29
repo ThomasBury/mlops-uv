@@ -1,6 +1,0 @@
-.git
-*.log
-__pycache__/
-.pytest_cache/
-*.joblib
-.mypy_cache/

@@ -1,0 +1,13 @@
+.git
+.github/
+.venv/
+*.log
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.coverage
+build/
+dist/
+tests/
+tennis-unsplash.jpg

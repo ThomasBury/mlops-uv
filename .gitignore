@@ -19,6 +19,12 @@ __pycache__/
 # data
 data/*
 
+# Local MLOps artifacts
+models/
+mlartifacts/
+mlruns/
+mlflow.db
+
 # Distribution / packaging
 .Python
 build/
