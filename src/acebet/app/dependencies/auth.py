@@ -1,33 +1,32 @@
 """Authentication helpers for the tutorial API."""
 
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Dict, Union
+from functools import lru_cache
+from typing import Annotated, TypedDict
 
 import bcrypt
 
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+from slowapi.util import get_remote_address
 
-from .data_models import TokenData, UserInDB
+from acebet.settings import get_jwt_signing_key, get_settings
+
+from .data_models import UserInDB
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Static JWT configuration used by the tutorial application.
-SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# In-memory tutorial user store.
-fake_users_db = {
-    "johndoe": {
-        "username": "johndoe",
-        "full_name": "John Doe",
-        "email": "johndoe@example.com",
-        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",
-        "disabled": False,
-    }
-}
+class UserRecord(TypedDict):
+    """Stored fields for one demo user."""
+
+    username: str
+    full_name: str
+    email: str
+    hashed_password: str
+    disabled: bool
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -47,6 +46,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     bool
         True if the passwords match, False otherwise.
     """
+    if len(plain_password.encode("utf-8")) > 72:
+        return False
     try:
         return bcrypt.checkpw(
             plain_password.encode("utf-8"),
@@ -73,7 +74,25 @@ def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-def get_user(db: Dict[str, dict], username: str) -> Union[UserInDB, None]:
+@lru_cache
+def get_demo_users_db() -> dict[str, UserRecord]:
+    """Build the demo user store from settings and cache the derived hash."""
+    settings = get_settings()
+    username = settings.demo_username
+    return {
+        username: {
+            "username": username,
+            "full_name": "John Doe",
+            "email": f"{username}@example.com",
+            "hashed_password": get_password_hash(
+                settings.demo_password.get_secret_value()
+            ),
+            "disabled": False,
+        }
+    }
+
+
+def get_user(db: Mapping[str, UserRecord], username: str) -> UserInDB | None:
     """
     Retrieve user information from the database.
 
@@ -96,8 +115,8 @@ def get_user(db: Dict[str, dict], username: str) -> Union[UserInDB, None]:
 
 
 def authenticate_user(
-    fake_db: Dict[str, dict], username: str, password: str
-) -> Union[UserInDB, bool]:
+    fake_db: Mapping[str, UserRecord], username: str, password: str
+) -> UserInDB | None:
     """
     Authenticate a user based on provided credentials.
 
@@ -118,14 +137,16 @@ def authenticate_user(
         User information if authenticated, False otherwise.
     """
     user = get_user(fake_db, username)
-    if not user:
-        return False
+    if user is None:
+        return None
     if not verify_password(password, user.hashed_password):
-        return False
+        return None
     return user
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+def create_access_token(
+    data: Mapping[str, object], expires_delta: timedelta | None = None
+) -> str:
     """
     Create an access token.
 
@@ -142,17 +163,22 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     str
         The access token.
     """
-    to_encode = data.copy()
+    to_encode = dict(data)
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    settings = get_settings()
+    encoded_jwt = jwt.encode(
+        to_encode,
+        get_jwt_signing_key(),
+        algorithm=settings.jwt_algorithm,
+    )
     return encoded_jwt
 
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
+def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
     """
     Decode a bearer token and return the matching tutorial user.
 
@@ -172,20 +198,24 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        settings = get_settings()
+        payload = jwt.decode(
+            token,
+            get_jwt_signing_key(),
+            algorithms=[settings.jwt_algorithm],
+        )
+        username = payload.get("sub")
+        if not isinstance(username, str) or not username:
             raise credentials_exception
-        token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    user = get_user(fake_users_db, username=token_data.username)
+    user = get_user(get_demo_users_db(), username=username)
     if user is None:
         raise credentials_exception
     return user
 
 
-async def get_current_active_user(
+def get_current_active_user(
     current_user: UserInDB = Depends(get_current_user),
 ) -> UserInDB:
     """
@@ -206,8 +236,22 @@ async def get_current_active_user(
     return current_user
 
 
-def get_user_identifier(
-    request: Request, current_user: UserInDB = Depends(get_current_user)
-) -> str:
-    """Return the authenticated username for rate-limiting helpers."""
-    return current_user.username
+def get_prediction_rate_limit_key(request: Request) -> str:
+    """Return an authenticated-user key for prediction rate limiting."""
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() == "bearer" and token:
+        try:
+            settings = get_settings()
+            payload = jwt.decode(
+                token,
+                get_jwt_signing_key(),
+                algorithms=[settings.jwt_algorithm],
+            )
+        except (JWTError, RuntimeError):
+            pass
+        else:
+            username = payload.get("sub")
+            if isinstance(username, str) and username:
+                return f"user:{username}"
+    return f"ip:{get_remote_address(request)}"

@@ -1,23 +1,115 @@
-name: testing
+name: CI
 
 on:
+  pull_request:
   push:
     branches:
-      - "main"
+      - main
+
+permissions:
+  contents: read
+
 jobs:
-  uv-example:
-    name: python
+  python:
+    name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version: ${{ matrix.python-version }}
+      - name: Install core and development dependencies
+        run: uv sync --locked --dev
+      - name: Ruff lint
+        run: uv run ruff check src tests
+      - name: Ruff format check
+        run: uv run ruff format --check src tests
+      - name: ty type check
+        run: uv run ty check
+      - name: Unit tests with branch coverage
+        run: >-
+          uv run pytest tests
+          -m "not (api or tracing or packaging)"
+          --cov=src/acebet
+          --cov-branch
+          --cov-fail-under=0
+          --cov-report=
+      - name: Preserve Python 3.12 unit coverage
+        if: matrix.python-version == '3.12'
+        run: mv .coverage .coverage.unit
+      - name: Upload Python 3.12 unit coverage
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unit-coverage
+          path: .coverage.unit
+          include-hidden-files: true
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+  integration:
+    name: Python 3.12 integration, API, tracing, and packaging
+    needs: python
+    runs-on: ubuntu-latest
+    env:
+      ACEBET_ENV: test
+      ACEBET_SECRET_KEY: ci-test-signing-secret
+      ACEBET_RATE_LIMITING_ENABLED: "false"
 
-      - name: Install the project
-        run: uv sync --all-extras --dev
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version: "3.12"
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      - name: Install core and development dependencies
+        run: uv sync --locked --dev
+      - name: Run non-mutating generation checks
+        run: just data-check-sample feature-state-check train-check
+      - name: Execute tutorial notebook without modifying it
+        run: just notebook-check
+      - name: Install the tracing extra
+        run: uv sync --locked --dev --extra tracing
+      - name: Run integration, API, tracing, and packaging tests
+        run: >-
+          uv run pytest tests
+          -m "api or tracing or packaging"
+          --cov-fail-under=0
+          --cov=src/acebet
+          --cov-branch
+          --cov-report=
+      # pytest-cov clears .coverage.* at startup; restore unit data after tests.
+      - name: Download unit coverage
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: unit-coverage
+          path: .
+      - name: Combine and enforce coverage guarantees
+        run: |
+          mv .coverage .coverage.integration
+          uv run coverage combine .coverage.unit .coverage.integration
+          uv run coverage report
+          uv run coverage report --fail-under=100 \
+            --include='src/acebet/model_artifacts.py,src/acebet/app/main.py,src/acebet/app/routers/prediction.py,src/acebet/app/dependencies/predict_winner.py'
+      - name: Verify checks left tracked files unchanged
+        run: git diff --exit-code
 
-      - name: Run tests
-        # For example, using `pytest`
-        run: uv run pytest tests
+  docker:
+    name: Docker build and authenticated smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      - name: Build and smoke the image
+        run: just docker-smoke

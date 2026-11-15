@@ -18,32 +18,30 @@ style instead of mixing Google-style sections into the same repository.
 
 ### Function
 
-```python
-def query_data(df: pd.DataFrame, date: str) -> pd.DataFrame:
-    """Filter rows for a specific date.
+```python title="Function docstring example"
+def load_player_stats(player_stats_file: str | Path) -> pd.DataFrame:
+    """Load the online player-state table.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Match-level dataset.
-    date : str
-        Date in ``YYYY-MM-DD`` format.
+    player_stats_file : str | Path
+        Feather file containing one current snapshot per player.
 
     Returns
     -------
     pd.DataFrame
-        Rows matching the requested date.
+        Player-state rows indexed by player.
 
     Raises
     ------
     ValueError
-        If ``date`` cannot be parsed.
+        If the table cannot be read or has invalid state columns.
     """
 ```
 
 ### Class
 
-```python
+```python title="Class docstring example"
 class Token(BaseModel):
     """Response model for bearer token issuance.
 

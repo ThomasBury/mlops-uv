@@ -1,47 +1,75 @@
 [project]
-site_name = "AceBet Documentation"
+site_name = "Classical MLOps from Notebook to Production"
 site_url = "https://thomasbury.github.io/mlops-uv/"
+nav = [
+  {"Start Here" = "index.md"},
+  {"Tutorial" = [
+    "tutorial/index.md",
+    {"01 The Prepared-Data Boundary" = "tutorial/01-notebook-to-data-contract.md"},
+    {"02 Model Validity and Selection" = "tutorial/02-feature-contract-training-and-export.md"},
+    {"03 Artifact Reproducibility and Trust" = "tutorial/03-reproducibility-versioning-and-dependencies.md"},
+    {"04 Serving Validated Predictions" = "tutorial/04-serving-async-and-monitoring.md"},
+    {"05 Authentication and Caller Identity" = "tutorial/05-authentication-authorization-and-access-boundaries.md"},
+    {"06 Implemented Observability" = "tutorial/06-observability-logging-metrics-and-traces.md"},
+    {"07 Validation and Release Boundaries" = "tutorial/07-validation-ci-deployment-and-boundaries.md"}
+  ]},
+  {"Companion Guides" = [
+    "guides/index.md",
+    {"Setup" = [
+      {"Getting Started" = "getting-started.md"}
+    ]},
+    {"Deep Dive" = [
+      {"Training and Inference" = "user-guide/training-and-inference.md"},
+      {"Model Artifacts and Promotion" = "user-guide/model-artifacts-and-promotion.md"}
+    ]},
+    {"Tooling" = [
+      {"Developer Workflow" = "uv/uv-workflows-for-mlops.md"}
+    ]},
+    {"Scope and Conventions" = [
+      {"Tutorial Boundaries" = "tutorial-shortcuts-vs-production.md"},
+      {"Docstring Standards" = "docstring-standards.md"}
+    ]}
+  ]},
+  {"Reference" = [
+    "reference/index.md",
+    {"API Endpoints" = "api/sync-endpoints.md"},
+    {"CI/CD" = "cicd/github-actions-pipeline.md"},
+    {"Deployment" = "deployment/docker-and-github-actions.md"}
+  ]}
+]
+
+[project.theme]
+features = [
+  "navigation.tabs",
+  "navigation.sections",
+  "navigation.indexes",
+  "navigation.path",
+]
+
+[project.markdown_extensions.admonition]
+
+[project.markdown_extensions.attr_list]
+
+[project.markdown_extensions.md_in_html]
+
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.inlinehilite]
+
+[project.markdown_extensions.pymdownx.snippets]
+
+[project.markdown_extensions.pymdownx.details]
+
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }
+]
 
 [build]
 source = "docs"
 output = "site"
-
-[[nav]]
-title = "Home"
-path = "index.md"
-
-[[nav]]
-title = "Getting Started"
-path = "getting-started.md"
-
-[[nav]]
-title = "Classical MLOps Tutorial"
-path = "classical-mlops-tutorial.md"
-
-[[nav]]
-title = "Developer Workflow"
-path = "uv/uv-workflows-for-mlops.md"
-
-[[nav]]
-title = "User Guide Overview"
-path = "user-guide/overview.md"
-
-[[nav]]
-title = "Training and Inference"
-path = "user-guide/training-and-inference.md"
-
-[[nav]]
-title = "API Endpoints"
-path = "api/sync-endpoints.md"
-
-[[nav]]
-title = "CI/CD"
-path = "cicd/github-actions-pipeline.md"
-
-[[nav]]
-title = "Deployment"
-path = "deployment/docker-and-github-actions.md"
-
-[[nav]]
-title = "Tutorial Boundaries"
-path = "tutorial-shortcuts-vs-production.md"

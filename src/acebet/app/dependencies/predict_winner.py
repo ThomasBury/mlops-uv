@@ -1,44 +1,81 @@
-import pandas as pd
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
+from typing import Literal, TypedDict
+
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
 from joblib import load
+from sklearn.utils.validation import check_is_fitted
 
-from acebet.features import build_match_feature_row, select_model_features
+from acebet.app.dependencies.data_models import FeatureFreshness, ModelIdentity
+from acebet.features import (
+    FeatureContractPipeline,
+    PLAYER_STATS_COLUMNS,
+    PredictionEstimator,
+    align_features_to_model,
+    assert_model_artifact_compatible,
+    build_match_feature_row,
+)
+from acebet.model_artifacts import (
+    model_metadata_path,
+    read_json,
+    resolve_model_artifact_path,
+)
 
 
-def load_data(data_file: str | Path) -> pd.DataFrame:
-    """
-    Load the historical match data from a feather file.
+@dataclass(frozen=True)
+class LoadedModelBundle:
+    """Estimator and identity derived from one validated artifact bundle."""
 
-    Parameters
-    ----------
-    data_file : str or Path
-        The path to the historical data file.
+    estimator: PredictionEstimator
+    identity: ModelIdentity
+    artifact_path: Path
 
-    Returns
-    -------
-    pd.DataFrame
-        The loaded and date-parsed data.
 
-    Raises
-    ------
-    FileNotFoundError
-        If the data file does not exist.
-    ValueError
-        If an error occurs during data loading.
-    """
-    try:
-        # Read data from a feather file and convert the 'date' column to datetime format.
-        df = pd.read_feather(data_file)
-        df["date"] = pd.to_datetime(df["date"])
-        return df
-    except FileNotFoundError:
-        # Raise an error if the specified data file is not found.
-        raise FileNotFoundError(
-            f"Data file '{data_file}' not found. Please check the file path."
-        )
-    except Exception as e:
-        # Raise an error for any other loading-related exceptions.
-        raise ValueError(f"Error occurred while loading data: {e}")
+@dataclass(frozen=True)
+class PlayerSnapshot:
+    """Resolved online features for one player."""
+
+    player: str
+    rank: float
+    elo: float
+    as_of_date: date
+
+    def feature_values(self) -> dict[str, float]:
+        """Return the snapshot values consumed by feature assembly."""
+        return {"rank": self.rank, "elo": self.elo}
+
+
+class AffectedPlayer(TypedDict):
+    """Typed details for one future-dated feature snapshot."""
+
+    player: str
+    role: Literal["p1", "p2"]
+    as_of_date: date
+    age_days: int
+
+
+class UnknownPlayerSnapshotsError(ValueError):
+    """Raised when one or more requested player snapshots are unavailable."""
+
+    def __init__(self, players: list[str]) -> None:
+        super().__init__("Player snapshots are unavailable.")
+        self.players = players
+
+
+class NegativeSnapshotAgeError(ValueError):
+    """Raised when one or more snapshots postdate the requested match."""
+
+    def __init__(
+        self, match_date: date, affected_players: list[AffectedPlayer]
+    ) -> None:
+        super().__init__("Player snapshots must not postdate the match.")
+        self.match_date = match_date
+        self.affected_players = affected_players
 
 
 def load_player_stats(player_stats_file: str | Path) -> pd.DataFrame:
@@ -61,7 +98,30 @@ def load_player_stats(player_stats_file: str | Path) -> pd.DataFrame:
     """
     try:
         df = pd.read_feather(player_stats_file)
-        df["as_of_date"] = pd.to_datetime(df["as_of_date"])
+        missing_columns = sorted(set(PLAYER_STATS_COLUMNS) - set(df.columns))
+        if missing_columns:
+            raise ValueError(
+                f"Player stats table is missing columns: {missing_columns}"
+            )
+        if (
+            not df["player"]
+            .map(lambda value: isinstance(value, str) and bool(value.strip()))
+            .all()
+        ):
+            raise ValueError("Player identities must be nonblank strings.")
+        if df["player"].duplicated().any():
+            raise ValueError("Player identities must be unique.")
+        df["as_of_date"] = pd.to_datetime(df["as_of_date"], errors="coerce")
+        if df["as_of_date"].isna().any():
+            raise ValueError("Player snapshot dates must be parseable and non-null.")
+        for column in ("rank", "elo"):
+            df[column] = pd.to_numeric(df[column], errors="coerce")
+            if df[column].isna().any() or not np.isfinite(df[column]).all():
+                raise ValueError(
+                    f"Player stats {column} must contain finite numeric values."
+                )
+        if ((df["rank"] <= 0) | (df["rank"] % 1 != 0)).any():
+            raise ValueError("Player ranks must be positive integers.")
         return df.set_index("player", drop=False).sort_index()
     except FileNotFoundError:
         raise FileNotFoundError(
@@ -71,89 +131,9 @@ def load_player_stats(player_stats_file: str | Path) -> pd.DataFrame:
         raise ValueError(f"Error occurred while loading player stats: {e}")
 
 
-def query_data(df: pd.DataFrame, p1_name: str, p2_name: str, date: str) -> pd.DataFrame:
-    """
-    Query the historical data by player names and date.
-
-    This function filters the DataFrame to find rows where the specified players
-    (in any order) played on the given date.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The DataFrame containing historical match data.
-    p1_name : str
-        The name of the first player.
-    p2_name : str
-        The name of the second player.
-    date : str
-        The date of the match in 'YYYY-MM-DD' format.
-
-    Returns
-    -------
-    pd.DataFrame
-        A DataFrame containing the matching historical rows.
-
-    Raises
-    ------
-    KeyError
-        If the required columns ('p1', 'p2', 'date') are not present.
-    ValueError
-        If no match is found or an error occurs during querying.
-    """
-    try:
-        date = pd.to_datetime(date)
-        date_series = pd.to_datetime(df["date"])
-
-        player_order = (df["p1"].eq(p1_name) & df["p2"].eq(p2_name)) | (
-            df["p1"].eq(p2_name) & df["p2"].eq(p1_name)
-        )
-        matches = df[player_order & date_series.eq(date)]
-        if matches.empty:
-            raise ValueError(
-                f"No match found for '{p1_name}' vs '{p2_name}' on '{date:%Y-%m-%d}'."
-            )
-        return matches
-    except KeyError as e:
-        raise KeyError(f"Invalid column names in the data: {e}")
-    except Exception as e:
-        raise ValueError(f"Error occurred while querying data: {e}")
-
-
-def align_features_to_model(model: object, features: pd.DataFrame) -> pd.DataFrame:
-    """
-    Ensure the feature dataframe matches the model's expected column order.
-
-    Parameters
-    ----------
-    model : Pipeline or BaseEstimator
-        The trained Scikit-Learn model or pipeline.
-    features : pd.DataFrame
-        The assembled feature vector.
-
-    Returns
-    -------
-    pd.DataFrame
-        Features sorted and padded to match model training expectations.
-    """
-    # Extract expected feature names if available in the model/pipeline metadata
-    expected_columns = getattr(model, "feature_names_in_", None)
-    if expected_columns is None and hasattr(model, "named_steps"):
-        encoder = model.named_steps.get("encoder")
-        expected_columns = getattr(encoder, "feature_names_in_", None)
-
-    if expected_columns is None:
-        return features
-
-    # Reorder columns and add missing ones as NA
-    aligned = features.copy()
-    for column in expected_columns:
-        if column not in aligned.columns:
-            aligned[column] = pd.NA
-    return aligned.loc[:, list(expected_columns)]
-
-
-def predict(model: object, df: pd.DataFrame):
+def predict(
+    model: PredictionEstimator, df: pd.DataFrame
+) -> tuple[float, Literal[0, 1]]:
     """
     Predict the winning probability and outcome class.
 
@@ -166,90 +146,169 @@ def predict(model: object, df: pd.DataFrame):
 
     Returns
     -------
-    prob : float
-        The probability of player 1 winning.
-    class_ : int
-        The binary class prediction (0 or 1).
-    player_1 : str
-        The name of player 1.
+    tuple[float, int]
+        The unmodified class-1/player-1 probability and binary predicted class.
     """
-    # 1. Select only columns allowed at inference time
-    # 2. Align them to the specific order the model saw during training
-    X = align_features_to_model(model, select_model_features(df))
+    # Align to the artifact's strict ordered feature contract.
+    X = align_features_to_model(model, df)
+    raw_probabilities = model.predict_proba(X)
+    raw_classes = model.predict(X)
+    return normalize_prediction_outputs(raw_probabilities, raw_classes)
+
+
+def normalize_prediction_outputs(
+    raw_probabilities: npt.ArrayLike, raw_classes: npt.ArrayLike
+) -> tuple[float, Literal[0, 1]]:
+    """Validate exactly one sklearn-shaped binary estimator result."""
     try:
-        # Generate raw predictions
-        prob = model.predict_proba(X)[:, 1]
-        class_ = model.predict(X)
-        return prob, class_, X["p1"].values[0]
-    except Exception as e:
-        raise ValueError(f"Error occurred during prediction: {e}")
+        probabilities = np.asarray(raw_probabilities)
+        if probabilities.shape != (1, 2):
+            raise ValueError(
+                "Estimator predict_proba output must contain one binary row."
+            )
+        probability_value = probabilities[0, 1]
+
+        classes = np.asarray(raw_classes)
+        if classes.shape != (1,):
+            raise ValueError("Estimator predict output must contain one class.")
+        class_value = classes[0]
+        if isinstance(probability_value, (bool, np.bool_)) or isinstance(
+            class_value, (bool, np.bool_)
+        ):
+            raise ValueError("Estimator outputs must be numeric, not boolean.")
+        probability = float(probability_value)
+        predicted_class_as_float = float(class_value)
+    except (IndexError, TypeError, OverflowError) as exc:
+        raise ValueError("Estimator returned malformed prediction outputs.") from exc
+
+    if not np.isfinite(probability) or not 0 <= probability <= 1:
+        raise ValueError("Player-1 win probability must be finite and in [0, 1].")
+    if predicted_class_as_float not in (0.0, 1.0):
+        raise ValueError("Predicted class must be binary (0 or 1).")
+    predicted_class: Literal[0, 1] = 0 if predicted_class_as_float == 0.0 else 1
+    return probability, predicted_class
 
 
-def load_model(model_path: str | Path):
-    """
-    Load a trained model artifact.
+def load_model_bundle(model_path: str | Path) -> LoadedModelBundle:
+    """Load an estimator and metadata-derived identity from one validated bundle."""
+    path = resolve_model_artifact_path(model_path)
+    metadata = read_json(model_metadata_path(path))
+    model = load(path)
+    model_metadata = metadata["model"]
+    model_kind = model_metadata["kind"]
+    if model_kind == "elo_baseline":
+        from acebet.train.estimators import EloBaselineClassifier
 
-    Parameters
-    ----------
-    model_path : str or Path
-        Directory containing 'model_*.joblib' files, or a direct file path.
+        if not isinstance(model, EloBaselineClassifier):
+            raise ValueError(
+                "Deserialized model type does not match metadata kind 'elo_baseline'."
+            )
+    elif model_kind == "lightgbm":
+        from lightgbm import LGBMClassifier
 
-    Returns
-    -------
-    model : object
-        The deserialized model artifact.
-    """
-    path = Path(model_path)
-    if path.is_file():
-        return load(path)
+        if not isinstance(model, FeatureContractPipeline):
+            raise ValueError(
+                "Deserialized model type does not match metadata kind 'lightgbm'."
+            )
+        if not isinstance(model.named_steps.get("gbm"), LGBMClassifier):
+            raise ValueError("LightGBM artifact is missing its fitted LGBMClassifier.")
+    else:
+        raise ValueError(f"Unsupported selected model kind {model_kind!r}.")
+    assert_model_artifact_compatible(model)
+    check_is_fitted(model)
+    identity = ModelIdentity(
+        kind=model_kind,
+        version=Path(model_metadata["filename"]).stem,
+        sha256=model_metadata["sha256"],
+    )
+    return LoadedModelBundle(
+        estimator=model,
+        identity=identity,
+        artifact_path=path.resolve(),
+    )
 
-    # Automatically resolve the latest model in the directory by name
-    model_files = [file for file in path.glob("model_*.joblib")]
-    if not model_files:
-        raise FileNotFoundError(
-            f"No trained model found in '{model_path}'. Expected a 'model_*.joblib' file."
+
+def resolve_player_snapshots(
+    player_stats: pd.DataFrame, p1_name: str, p2_name: str
+) -> tuple[PlayerSnapshot, PlayerSnapshot]:
+    """Resolve both snapshots exactly once and retain request order on failure."""
+    missing_columns = sorted(set(PLAYER_STATS_COLUMNS) - set(player_stats.columns))
+    if missing_columns:
+        raise ValueError(f"Player stats table is missing columns: {missing_columns}")
+
+    stats_by_player = (
+        player_stats.reset_index(drop=True)
+        .set_index("player", drop=False, verify_integrity=True)
+        .sort_index()
+    )
+    missing_players = [
+        player for player in (p1_name, p2_name) if player not in stats_by_player.index
+    ]
+    if missing_players:
+        raise UnknownPlayerSnapshotsError(missing_players)
+
+    def snapshot_for(player: str) -> PlayerSnapshot:
+        row = stats_by_player.loc[player]
+        as_of_timestamp = pd.Timestamp(row["as_of_date"])
+        if not isinstance(as_of_timestamp, pd.Timestamp):
+            raise ValueError(f"Player snapshot date is missing for {player!r}.")
+        as_of_date = as_of_timestamp.date()
+        return PlayerSnapshot(
+            player=player,
+            rank=float(row["rank"]),
+            elo=float(row["elo"]),
+            as_of_date=as_of_date,
         )
-    most_recent_model_file = max(model_files, key=lambda file: file.name)
-    return load(most_recent_model_file)
+
+    return snapshot_for(p1_name), snapshot_for(p2_name)
 
 
-def make_prediction(model: object, data: pd.DataFrame, p1_name: str, p2_name: str, date: str):
-    """
-    Score a match by looking it up in a historical dataframe.
-
-    This helper is kept for regression checks against known historical rows.
-
-    Parameters
-    ----------
-    model : object
-        Pre-loaded model artifact.
-    data : pd.DataFrame
-        Pre-loaded historical match data.
-    p1_name : str
-        Name of player 1.
-    p2_name : str
-        Name of player 2.
-    date : str
-        Match date.
-
-    Returns
-    -------
-    tuple
-        (probability, class, player_1_name)
-    """
-    df_filtered = query_data(data, p1_name, p2_name, date)
-    prob, class_, player_1 = predict(model, df_filtered)
-    return prob, class_, player_1
+def calculate_feature_freshness(
+    match_date: date,
+    p1_snapshot: PlayerSnapshot,
+    p2_snapshot: PlayerSnapshot,
+) -> FeatureFreshness:
+    """Calculate calendar-day snapshot ages and reject future snapshots."""
+    snapshots: tuple[tuple[Literal["p1", "p2"], PlayerSnapshot], ...] = (
+        ("p1", p1_snapshot),
+        ("p2", p2_snapshot),
+    )
+    ages = {
+        role: (match_date - snapshot.as_of_date).days for role, snapshot in snapshots
+    }
+    affected_players: list[AffectedPlayer] = [
+        {
+            "player": snapshot.player,
+            "role": role,
+            "as_of_date": snapshot.as_of_date,
+            "age_days": ages[role],
+        }
+        for role, snapshot in snapshots
+        if ages[role] < 0
+    ]
+    if affected_players:
+        raise NegativeSnapshotAgeError(match_date, affected_players)
+    return FeatureFreshness(
+        p1_as_of_date=p1_snapshot.as_of_date,
+        p2_as_of_date=p2_snapshot.as_of_date,
+        p1_age_days=ages["p1"],
+        p2_age_days=ages["p2"],
+    )
 
 
 def make_online_prediction(
-    model: object,
-    player_stats: pd.DataFrame,
+    model: PredictionEstimator,
     p1_name: str,
     p2_name: str,
     date: str,
-    match_context: dict | None = None,
-):
+    p1_snapshot: PlayerSnapshot,
+    p2_snapshot: PlayerSnapshot,
+    series: str,
+    court: str,
+    surface: str,
+    round: str,
+    best_of: int,
+) -> tuple[float, Literal[0, 1]]:
     """
     Assemble features from player state and match context, then score them.
 
@@ -261,30 +320,28 @@ def make_online_prediction(
     ----------
     model : object
         Pre-loaded model artifact.
-    player_stats : pd.DataFrame
-        Pre-loaded 'latest_player_stats' table.
     p1_name : str
         Name of player 1.
     p2_name : str
         Name of player 2.
     date : str
         Match date.
-    match_context : dict, optional
-        Additional attributes like 'surface' or 'round'.
 
-    Returns
-    -------
-    tuple
-        (probability, class, player_1_name)
+    Notes
+    -----
+    All five match-context values are required; online scoring has no defaults.
     """
     # Build the feature vector from scratch using current player state
     feature_row = build_match_feature_row(
         p1_name=p1_name,
         p2_name=p2_name,
         date=date,
-        stats_context=player_stats,
-        match_context=match_context,
+        p1_snapshot=p1_snapshot.feature_values(),
+        p2_snapshot=p2_snapshot.feature_values(),
+        series=series,
+        court=court,
+        surface=surface,
+        round=round,
+        best_of=best_of,
     )
-    # Run the standard prediction pipeline
-    prob, class_, player_1 = predict(model, feature_row)
-    return prob, class_, player_1
+    return predict(model, feature_row)

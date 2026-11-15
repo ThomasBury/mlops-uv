@@ -1,40 +1,40 @@
-# AceBet Documentation
+---
+title: Start Here
+description: Begin the model-validity-first AceBet tutorial and distinguish tutorial, guide, and reference material.
+hide:
+  - toc
+---
 
-This site documents the current `acebet` codebase as it runs today. It is a
-small classical MLOps tutorial: validate a prepared ATP dataset, derive player
-state, train a LightGBM pipeline, and serve predictions through FastAPI.
+# Start Here
 
-## Quickstart
+AceBet is a compact classical MLOps tutorial. The tennis predictor is only a
+vehicle: it is not a betting product or a claim of production readiness.
 
-```bash
-uv sync
-just data-check
-just feature-state
-just train
-just test
-just serve
-```
+## The Mental Model
 
-Open `http://127.0.0.1:8000/docs` for the generated OpenAPI UI once the local
-server is running.
+Follow one chain: **prepared data** → **features** → **time-aware comparison**
+→ **selected model bundle** → **validated API** → **operational checks**.
+Each step makes one decision inspectable before the next one depends on it.
+The tutorial shows how an ML engineering project protects its data, decisions,
+artifacts, and operations—not how to ship a betting system.
 
-## What To Read
+## Choose A Path
 
-- [Getting Started](./getting-started.md) for a first local run.
-- [Classical MLOps Tutorial](./classical-mlops-tutorial.md) for the end-to-end workflow.
-- [Developer Workflow](./uv/uv-workflows-for-mlops.md) for how `uv` and `just` divide responsibilities in this repo.
-- [User Guide Overview](./user-guide/overview.md) for repository structure and commands.
-- [Training and Inference](./user-guide/training-and-inference.md) for artifact and feature-contract details.
-- [API Endpoints](./api/sync-endpoints.md) for the current HTTP surface.
-- [CI/CD](./cicd/github-actions-pipeline.md) and [Deployment](./deployment/docker-and-github-actions.md) for automation and container behavior.
-- [Tutorial Boundaries](./tutorial-shortcuts-vs-production.md) for the shortcuts this repo takes on purpose.
+- [Tutorial](./tutorial/index.md): the sequential seven chapters.
+- [Getting Started](./getting-started.md): clean-clone setup and local commands.
+- [Companion Guides](./guides/index.md): training, artifacts, and tooling.
+- [Reference](./reference/index.md): exact API, CI, and Docker behavior.
 
-## Docs Authoring
+The canonical training boundary is the committed 44,617-row prepared Feather
+file. The 100-row raw sample and starter notebook demonstrate transformations
+and in-memory comparison only; they cannot reproduce the production dataset.
 
-The authored docs source lives in `docs/` and is built by Zensical using
-`zensical.toml`.
+The canonical comparison selects `elo_baseline` because the LightGBM
+challenger does not beat Elo by the required log-loss margin. The API then
+serves that checksum-validated promoted bundle and reports exact probability,
+model identity, and snapshot freshness.
 
-```bash
-just docs-serve
-just docs-build
-```
+`just review` validates the non-Docker loop without modifying tracked files.
+`just docker-smoke` separately proves the non-root authenticated container
+runtime. Use [Tutorial Boundaries](./tutorial-shortcuts-vs-production.md) for
+the single implemented-versus-missing matrix.

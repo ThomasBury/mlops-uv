@@ -1,326 +1,299 @@
-import logging
-import numpy as np
+"""AceBet FastAPI application composition and lifespan management."""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import timedelta
 from pathlib import Path
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from fastapi import (
-    BackgroundTasks,
-    Depends,
-    FastAPI,
-    HTTPException,
-    Request,
-    Response,
-    status,
-)
-from fastapi.security import OAuth2PasswordRequestForm
-from starlette.types import Message
+import time
 
-# Import the prediction logic and data contracts
-from acebet.app.dependencies.predict_winner import (
-    make_online_prediction,
-    load_model,
-    load_player_stats,
-)
-from acebet.app.dependencies.data_models import (
-    Token,
-    User,
-    UserInDB,
-    PredictionRequest,
-    PredictionResponse,
-)
-from acebet.app.dependencies.auth import (
-    authenticate_user,
-    fake_users_db,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    create_access_token,
-    get_current_active_user,
-    get_current_user,
-)
-
+from typing import Any, cast
+from fastapi import FastAPI, Request, Response
+import pandas as pd
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-# Configure standard logging to a file for auditing requests
-logging.basicConfig(filename="info.log", level=logging.DEBUG)
+from acebet.app.dependencies.data_models import (
+    PREDICTION_CONTEXT_FIELDS,
+)
+from acebet.app.dependencies.predict_winner import (
+    LoadedModelBundle,
+    load_model_bundle,
+    load_player_stats,
+    resolve_player_snapshots,
+)
+from acebet.app.observability import (
+    bind_request_context,
+    clear_request_context,
+    configure_logging,
+    configure_tracing,
+    get_request_id,
+    get_request_logger,
+    record_http_metrics,
+    request_duration_seconds,
+    resolve_metric_path,
+    shutdown_tracing,
+)
+from acebet.app.routers.authentication import create_authentication_router
+from acebet.app.routers.operational import (
+    create_operational_router,
+    testing_predictions_enabled,
+)
+from acebet.app.routers.prediction import PREDICTION_PATHS, create_prediction_router
+from acebet.app.runtime import PredictionAssets, PredictionMode, RuntimeAssets
+from acebet.features import (
+    PredictionEstimator,
+    align_features_to_model,
+    build_match_feature_row,
+)
+from acebet.model_artifacts import promotion_record_path, resolve_model_artifact_path
+from acebet.settings import AppSettings, get_jwt_signing_key, get_settings
 
-# Define paths for asset resolution
 PACKAGE_DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-PROJECT_DATA_DIR = PROJECT_ROOT / "data"
-PROJECT_MODEL_DIR = PROJECT_ROOT / "models"
-REQUEST_LOG_EXCERPT_BYTES = 4096
 
 
-def resolve_prediction_assets(testing: bool) -> tuple[Path, Path]:
-    """
-    Locate the model and player-state files required for online prediction.
-
-    Parameters
-    ----------
-    testing : bool
-        If True, prioritize sample/testing datasets. If False, use production data.
-
-    Returns
-    -------
-    tuple[Path, Path]
-        (player_stats_file_path, model_file_path)
-
-    Raises
-    ------
-    FileNotFoundError
-        If required assets cannot be found in expected locations.
-    """
-    if testing:
-        stats_candidates = [
-            PACKAGE_DATA_DIR / "latest_player_stats_sample.feather",
-            PACKAGE_DATA_DIR / "latest_player_stats.feather",
-            PROJECT_DATA_DIR / "latest_player_stats.feather",
-        ]
+def resolve_prediction_assets(
+    prediction_mode: PredictionMode, settings: AppSettings
+) -> tuple[Path, Path]:
+    """Locate the player-state and promoted-model files for one runtime mode."""
+    if prediction_mode == "testing":
+        stats_file = PACKAGE_DATA_DIR / "latest_player_stats_sample.feather"
+        model_dir = PACKAGE_DATA_DIR
     else:
-        stats_candidates = [
-            PROJECT_DATA_DIR / "latest_player_stats.feather",
-            PACKAGE_DATA_DIR / "latest_player_stats.feather",
-        ]
-
-    stats_file = next((path for path in stats_candidates if path.exists()), None)
-    if stats_file is None:
-        raise FileNotFoundError(
-            f"No player stats table found for testing={testing}. Checked: {stats_candidates}"
+        stats_file = (settings.data_dir or PACKAGE_DATA_DIR) / (
+            "latest_player_stats.feather"
         )
+        model_dir = settings.model_dir or PACKAGE_DATA_DIR
 
-    model_candidates = [PROJECT_MODEL_DIR, PACKAGE_DATA_DIR, PROJECT_ROOT]
-    model_path = next(
-        (path for path in model_candidates if any(path.glob("model_*.joblib"))),
-        None,
+    if not stats_file.is_file():
+        raise FileNotFoundError(
+            f"Required player stats file not found for prediction_mode="
+            f"{prediction_mode!r}: '{stats_file}'."
+        )
+    promotion_path = promotion_record_path(model_dir)
+    if not promotion_path.is_file():
+        raise FileNotFoundError(
+            f"Required promoted model pointer not found for prediction_mode="
+            f"{prediction_mode!r}: '{promotion_path}'."
+        )
+    return stats_file, model_dir
+
+
+def assert_prediction_feature_contract(
+    model: PredictionEstimator, player_stats: pd.DataFrame
+) -> None:
+    """Fail fast when loaded serving assets do not match the model schema."""
+    players = list(dict.fromkeys(player_stats["player"].dropna().tolist()))
+    if len(players) < 2:
+        raise ValueError("Player stats table must contain at least two players.")
+
+    p1_snapshot, p2_snapshot = resolve_player_snapshots(
+        player_stats, players[0], players[1]
     )
-    if model_path is None:
-        raise FileNotFoundError(f"No prediction model found. Checked: {model_candidates}")
-
-    return stats_file, model_path
+    online_features = build_match_feature_row(
+        p1_name=players[0],
+        p2_name=players[1],
+        date="2030-01-01",
+        p1_snapshot=p1_snapshot.feature_values(),
+        p2_snapshot=p2_snapshot.feature_values(),
+        series="ATP250",
+        court="Outdoor",
+        surface="Hard",
+        round="1st Round",
+        best_of=3,
+    )
+    align_features_to_model(model, online_features)
 
 
 def load_prediction_assets(
-    testing: bool, model_cache: dict[Path, object]
-) -> tuple[object, object]:
-    """Load and cache the model plus player-state table for one runtime mode."""
-    stats_file, model_path = resolve_prediction_assets(testing=testing)
-    cache_key = model_path.resolve()
-    model = model_cache.get(cache_key)
-    if model is None:
-        model = load_model(model_path)
-        model_cache[cache_key] = model
+    prediction_mode: PredictionMode,
+    model_cache: dict[Path, LoadedModelBundle],
+    settings: AppSettings,
+) -> PredictionAssets:
+    """Load one complete set of estimator, player state, and model identity."""
+    stats_file, model_path = resolve_prediction_assets(prediction_mode, settings)
+    cache_key = resolve_model_artifact_path(model_path).resolve()
+    bundle = model_cache.get(cache_key)
+    if bundle is None:
+        bundle = load_model_bundle(cache_key)
+        model_cache[cache_key] = bundle
     player_stats = load_player_stats(stats_file)
-    return model, player_stats
+    assert_prediction_feature_contract(bundle.estimator, player_stats)
+    return PredictionAssets(
+        model=bundle.estimator,
+        player_stats=player_stats,
+        model_identity=bundle.identity,
+    )
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    FastAPI Lifespan Manager: Executes logic during server startup and shutdown.
-
-    In MLOps, this pattern is used to pre-load large assets (models, reference tables)
-    into memory. This avoids expensive disk I/O and deserialization overhead
-    on every individual API request.
-    """
-    model_cache: dict[Path, object] = {}
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Load serving assets at startup and release all app-owned state on exit."""
+    settings = get_settings()
+    configure_logging(settings)
+    runtime_assets: RuntimeAssets = app.state.runtime_assets
     try:
-        app.state.model, app.state.player_stats = load_prediction_assets(
-            testing=False, model_cache=model_cache
-        )
-        app.state.model_test, app.state.player_stats_test = load_prediction_assets(
-            testing=True, model_cache=model_cache
-        )
-    except Exception:
-        logging.exception("CRITICAL: Failed to load assets during startup.")
-        raise
+        configure_tracing(app, settings)
+        app.state.limiter.enabled = settings.rate_limiting_enabled
+        get_jwt_signing_key()
 
-    logging.info("ML assets loaded successfully into app.state.")
-    try:
+        model_cache: dict[Path, LoadedModelBundle] = {}
+        try:
+            runtime_assets.production = load_prediction_assets(
+                prediction_mode="production",
+                model_cache=model_cache,
+                settings=settings,
+            )
+            if testing_predictions_enabled(settings):
+                runtime_assets.testing = load_prediction_assets(
+                    prediction_mode="testing",
+                    model_cache=model_cache,
+                    settings=settings,
+                )
+        except Exception:
+            get_request_logger().exception("startup_assets_load_failed")
+            raise
+
+        get_request_logger().info(
+            "startup_assets_loaded",
+            testing_predictions_enabled=testing_predictions_enabled(settings),
+        )
         yield
     finally:
-        logging.info("Shutting down API server.")
+        runtime_assets.clear()
+        try:
+            shutdown_tracing(app)
+        except Exception:
+            get_request_logger().exception("tracing_shutdown_failed")
+        try:
+            get_request_logger().info("api_shutdown")
+        except Exception:
+            pass
 
 
-# Initialize Rate Limiter
-limiter = Limiter(key_func=get_remote_address, default_limits=["12/minute"])
-
-# Create FastAPI App with Lifespan
-app = FastAPI(
-    title="AceBet Match Predictor",
-    description="MLOps Tutorial API for Tennis Match Winner Prediction",
-    lifespan=lifespan,
-)
-
-# Attach Limiter to App State
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-
-def log_request_summary(
-    method: str, path: str, status_code: int, req_body_excerpt: str | None
-) -> None:
-    """Log a small request summary without buffering full response bodies."""
-    log_line = f"{method} {path} -> {status_code}"
-    if req_body_excerpt:
-        logging.info("%s | request=%s", log_line, req_body_excerpt)
-        return
-    logging.info(log_line)
-
-
-def attach_background_log(
-    response: Response, method: str, path: str, status_code: int, req_body_excerpt: str | None
+async def prediction_request_validation_handler(
+    request: Request, exc: RequestValidationError
 ) -> Response:
-    """Preserve any existing background task while attaching request logging."""
-    tasks = BackgroundTasks()
-    if response.background is None:
-        response.background = tasks
-    elif hasattr(response.background, "tasks"):
-        tasks.tasks.extend(response.background.tasks)
-    else:
-        tasks.tasks.append(response.background)
-    tasks.add_task(log_request_summary, method, path, status_code, req_body_excerpt)
-    response.background = tasks
-    return response
-
-
-async def set_body(request: Request, body: bytes) -> None:
-    """Restore the request stream after middleware reads the body."""
-
-    async def receive() -> Message:
-        return {"type": "http.request", "body": body}
-
-    request._receive = receive
-
-
-@app.middleware("http")
-async def user_logging_middleware(request: Request, call_next):
-    """
-    Middleware to capture a compact request summary for auditing.
-    """
-    req_body_excerpt: str | None = None
-    if request.method in {"POST", "PUT", "PATCH"}:
-        req_body = await request.body()
-        await set_body(request, req_body)
-        if req_body:
-            req_body_excerpt = req_body[:REQUEST_LOG_EXCERPT_BYTES].decode(
-                errors="replace"
-            )
-    response = await call_next(request)
-    return attach_background_log(
-        response=response,
-        method=request.method,
-        path=request.url.path,
-        status_code=response.status_code,
-        req_body_excerpt=req_body_excerpt,
-    )
-
-
-@app.get("/")
-async def home():
-    """Welcome Route."""
-    return {"message": "Welcome to the AceBet API!"}
-
-
-@app.get("/limit/")
-@limiter.limit("5/minute")
-async def limit(request: Request, user_id: str):
-    """Demo route for rate limiting."""
-    return {"message": f"API call successful for {user_id}"}
-
-
-@app.post("/token", response_model=Token)
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    """OAuth2 compatible token login, retrieve an access token for prediction."""
-    user = authenticate_user(fake_users_db, form_data.username, form_data.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    """Map only prediction-specific custom validation tags to domain errors."""
+    errors = exc.errors()
+    error_types = {error["type"] for error in errors}
+    if request.url.path in PREDICTION_PATHS and error_types == {"equal_players"}:
+        context = errors[0].get("ctx") or {}
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {
+                    "code": "equal_players",
+                    "message": "Player names must be distinct.",
+                    "context": {"player": context["player"]},
+                }
+            },
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-
-@app.get("/users/me/", response_model=User)
-async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
-    """Return the current authenticated user profile."""
-    return current_user
-
-
-@app.get("/users/me/items/", response_model=list[dict])
-async def read_own_items(current_user: UserInDB = Depends(get_current_active_user)):
-    """Return items owned by the authenticated user."""
-    return [{"item_id": "Foo", "owner": current_user.username}]
-
-
-@app.post("/predict/", response_model=PredictionResponse)
-def predict_match_outcome(
-    request: Request,
-    prediction_request: PredictionRequest,
-    current_user: UserInDB = Depends(get_current_user),
-):
-    """
-    Authenticated Match Prediction Route.
-
-    NOTE: This is defined as a standard 'def' (synchronous).
-    FastAPI will execute this in a separate thread pool. This is a BEST PRACTICE
-    for CPU-bound tasks (ML inference) or blocking I/O (Pandas) to avoid
-    starving the main Event Loop.
-
-    The route resolves assets from 'app.state' which were pre-loaded during lifespan.
-    """
-    p1_name = prediction_request.p1_name
-    p2_name = prediction_request.p2_name
-    testing = prediction_request.testing
-    date = prediction_request.date.isoformat()
-
-    if testing:
-        model = getattr(request.app.state, "model_test", None)
-        player_stats = getattr(request.app.state, "player_stats_test", None)
-    else:
-        model = getattr(request.app.state, "model", None)
-        player_stats = getattr(request.app.state, "player_stats", None)
-
-    if model is None or player_stats is None:
-        raise HTTPException(
-            status_code=503,
-            detail="ML components not initialized. Please check server logs.",
-        )
-
-    try:
-        match_context = {
-            "atp": prediction_request.atp,
-            "location": prediction_request.location,
-            "tournament": prediction_request.tournament,
-            "series": prediction_request.series,
-            "court": prediction_request.court,
-            "surface": prediction_request.surface,
-            "round": prediction_request.round,
-            "best_of": prediction_request.best_of,
+    if request.url.path in PREDICTION_PATHS and error_types == {
+        "unsupported_context_value"
+    }:
+        field_order = {
+            field: index for index, field in enumerate(PREDICTION_CONTEXT_FIELDS)
         }
-        prob, class_, player_1 = make_online_prediction(
-            model=model,
-            player_stats=player_stats,
-            p1_name=p1_name,
-            p2_name=p2_name,
-            date=date,
-            match_context=match_context,
+        invalid_fields = sorted(
+            (error.get("ctx") or {} for error in errors),
+            key=lambda context: field_order[context["field"]],
         )
-    except (KeyError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logging.error(f"Prediction logic failed: {exc}")
-        raise HTTPException(status_code=500, detail="Internal prediction engine error.") from exc
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {
+                    "code": "unsupported_context_values",
+                    "message": "One or more match context values are unsupported.",
+                    "context": {"invalid_fields": invalid_fields},
+                }
+            },
+        )
+    return await request_validation_exception_handler(request, exc)
 
-    prob_val = float(np.asarray(prob).ravel()[0])
-    class_val = int(np.asarray(class_).ravel()[0])
-    prob_percent = round((100 * prob_val), 1)
 
-    return PredictionResponse(player_name=player_1, prob=prob_percent, class_=class_val)
+async def user_logging_middleware(request: Request, call_next) -> Response:
+    """Attach request IDs and record structured HTTP logs and metrics."""
+    request_id = get_request_id(request)
+    request.state.request_id = request_id
+    bind_request_context(
+        request_id=request_id, method=request.method, path=request.url.path
+    )
+    logger = get_request_logger()
+    start_time = time.perf_counter()
+    try:
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_seconds = request_duration_seconds(start_time)
+            metric_path = resolve_metric_path(request)
+            record_http_metrics(request.method, metric_path, 500, duration_seconds)
+            logger.exception(
+                "http_request_failed",
+                status_code=500,
+                duration_ms=round(duration_seconds * 1000, 2),
+            )
+            raise
+
+        response.headers["X-Request-ID"] = request_id
+        duration_seconds = request_duration_seconds(start_time)
+        metric_path = resolve_metric_path(request)
+        record_http_metrics(
+            request.method, metric_path, response.status_code, duration_seconds
+        )
+        logger.info(
+            "http_request_completed",
+            status_code=response.status_code,
+            duration_ms=round(duration_seconds * 1000, 2),
+        )
+        return response
+    finally:
+        clear_request_context()
+
+
+def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
+    """Return the stable local JSON response for an exceeded rate limit."""
+    return JSONResponse(
+        {"error": f"Rate limit exceeded: {exc.detail}"}, status_code=429
+    )
+
+
+def create_app() -> FastAPI:
+    """Create an independently stateful AceBet FastAPI application."""
+    limiter = Limiter(key_func=get_remote_address)
+    application = FastAPI(
+        title="AceBet Match Predictor",
+        description="MLOps Tutorial API for Tennis Match Winner Prediction",
+        lifespan=lifespan,
+        redirect_slashes=False,
+        telemetry={
+            "tracing": False,
+            "metrics": False,
+            "logs": False,
+            "operation_spans": False,
+            "auto_configure": False,
+        },
+    )
+    application.state.limiter = limiter
+    application.state.runtime_assets = RuntimeAssets()
+    application.state.tracer_provider = None
+    application.state.tracer = None
+    application.state.tracing_instrumentor = None
+    application.state.tracing_instrumented = False
+
+    application.add_exception_handler(
+        RateLimitExceeded, cast(Any, rate_limit_exceeded_handler)
+    )
+    application.add_exception_handler(
+        RequestValidationError, cast(Any, prediction_request_validation_handler)
+    )
+    application.middleware("http")(user_logging_middleware)
+    application.include_router(create_operational_router(limiter))
+    application.include_router(create_authentication_router(limiter))
+    application.include_router(create_prediction_router(limiter))
+    return application
+
+
+app = create_app()

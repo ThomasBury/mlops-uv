@@ -1,0 +1,15 @@
+{
+  "metadata_filename": "model_2026-08-02-12-59-07.metadata.json",
+  "metadata_sha256": "47257375530c0bfeceec7f10244ba5f9ea1829e5af595d062731d4aec7886fdc",
+  "model_filename": "model_2026-08-02-12-59-07.joblib",
+  "model_kind": "elo_baseline",
+  "model_sha256": "a51b64ddddc094260ff41aa68beba9662bdb7769076130f55b1ed54a51a703c7",
+  "modelcard_filename": "model_2026-08-02-12-59-07.modelcard.md",
+  "modelcard_sha256": "6c0820cd0065480bf76ddbc1dcd26369c4344ac70b8fff7e9b016486c82cde63",
+  "package_name": "acebet",
+  "package_version": "0.2.0",
+  "promoted_at_utc": "2026-08-02T12:59:07.126595+00:00",
+  "schema_version": 2,
+  "selection_reason": "elo_preferred_challenger_margin_not_met",
+  "selection_reason_text": "Both candidates are servable, but LightGBM does not beat Elo by the required 0.005 margin."
+}

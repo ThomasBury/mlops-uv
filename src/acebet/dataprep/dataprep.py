@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from acebet.features import add_derived_match_features, build_latest_player_stats
@@ -19,6 +20,82 @@ REQUIRED_COLUMNS = {
     "proba_elo",
     "target",
 }
+REQUIRED_NON_NULL_COLUMNS = (
+    "p1",
+    "p2",
+    "rank_p1",
+    "rank_p2",
+    "elo_p1",
+    "elo_p2",
+    "proba_elo",
+    "target",
+)
+RANK_COLUMNS = ("rank_p1", "rank_p2")
+NUMERIC_CONTRACT_COLUMNS = (
+    "rank_p1",
+    "rank_p2",
+    "elo_p1",
+    "elo_p2",
+    "proba_elo",
+)
+
+
+def validate_prepared_data_contract(df: pd.DataFrame) -> pd.DataFrame:
+    """Validate the minimal prepared-data contract before feature derivation."""
+    missing_columns = sorted(REQUIRED_COLUMNS - set(df.columns))
+    if missing_columns:
+        raise ValueError(f"Prepared dataset is missing columns: {missing_columns}")
+
+    validated = df.copy()
+    parsed_dates = pd.to_datetime(validated["date"], errors="coerce")
+    if parsed_dates.isna().any():
+        raise ValueError("Prepared dataset contains unparseable date values.")
+    validated["date"] = parsed_dates.dt.normalize()
+
+    null_columns = sorted(
+        column for column in REQUIRED_NON_NULL_COLUMNS if validated[column].isna().any()
+    )
+    if null_columns:
+        raise ValueError(
+            f"Prepared dataset has null values in required columns: {null_columns}"
+        )
+
+    numeric_values = validated.loc[:, NUMERIC_CONTRACT_COLUMNS].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    non_numeric_columns = sorted(
+        column
+        for column in NUMERIC_CONTRACT_COLUMNS
+        if numeric_values[column].isna().any()
+    )
+    if non_numeric_columns:
+        raise ValueError(
+            "Prepared dataset has non-numeric values in required numeric "
+            f"columns: {non_numeric_columns}"
+        )
+    if not np.isfinite(numeric_values).all().all():
+        raise ValueError("Prepared dataset numeric columns must contain finite values.")
+    validated[numeric_values.columns] = numeric_values
+
+    if (numeric_values.loc[:, RANK_COLUMNS] <= 0).any().any():
+        raise ValueError("Prepared dataset rank columns must be positive.")
+
+    if (numeric_values.loc[:, RANK_COLUMNS] % 1 != 0).any().any():
+        raise ValueError("Prepared dataset rank columns must be integral.")
+
+    if not numeric_values["proba_elo"].between(0, 1).all():
+        raise ValueError("Prepared dataset proba_elo must be within [0, 1].")
+
+    target = validated["target"]
+    if not pd.api.types.is_bool_dtype(target):
+        target_numeric = pd.to_numeric(target, errors="coerce")
+        if target_numeric.isna().any() or not target_numeric.isin([0, 1]).all():
+            raise ValueError(
+                "Prepared dataset target must be boolean or binary 0/1 values."
+            )
+        validated["target"] = target_numeric.astype("int64")
+
+    return validated
 
 
 def prepare_data(
@@ -41,14 +118,10 @@ def prepare_data(
             "This tutorial uses data/atp_data_production.feather as its canonical data source."
         )
 
-    df = pd.read_feather(input_path)
-    missing_columns = sorted(REQUIRED_COLUMNS - set(df.columns))
-    if missing_columns:
-        raise ValueError(f"Prepared dataset is missing columns: {missing_columns}")
+    df = validate_prepared_data_contract(pd.read_feather(input_path))
 
     df = add_derived_match_features(df)
-    df = df.sort_values("date").reset_index(drop=True)
-    df = df.reset_index(drop=True)
+    df = df.sort_values("date", kind="stable").reset_index(drop=True)
 
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -62,8 +135,15 @@ def prepare_data(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validate the prepared ATP dataset.")
-    parser.add_argument("--input-path", default=str(DEFAULT_PRODUCTION_DATA_PATH))
+    parser = argparse.ArgumentParser(
+        description="Validate the prepared ATP dataset.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--input-path",
+        default=str(DEFAULT_PRODUCTION_DATA_PATH),
+        help="Prepared Feather dataset to validate.",
+    )
     parser.add_argument(
         "--output-path",
         default=None,

@@ -1,24 +1,37 @@
+---
+title: Getting Started
+description: Install the locked environment, run the API, and use the non-mutating validation commands.
+---
+
 # Getting Started
 
-This guide gets the repo running locally with the commands that already exist in
-the codebase.
+Install Python `>=3.10,<3.13`, `uv`, `just`, and Git. Docker is optional
+unless you want to run the container smoke.
 
-## Prerequisites
+## What You Are Proving
 
-- Python `>=3.10,<3.13`
-- `uv`
-- `just`
-- Git
-- Optional: Docker
+This is the shortest route through the tutorial's chain: install the locked
+environment, validate the committed inputs and model decision, then run the
+same validated bundle behind a local API. It proves this repository agrees
+with itself; it does not create a new model or claim a production deployment.
 
-## Install And Verify
+## Clean-Clone Setup
 
 ```bash
-uv sync
+uv sync --locked
+cp .env.example .env
 just test
 ```
 
-That installs the locked environment and runs `uv run pytest tests`.
+`--locked` requires the committed `uv.lock` to match
+`pyproject.toml`. Do not refresh the lock merely because setup failed:
+investigate the reported Python, platform, cache, network, or lock mismatch.
+Run `uv lock` only when dependency declarations intentionally change, then
+review and commit the resulting lock diff.
+
+**Design choice:** dependencies are locked so the checks use the reviewed
+environment. See [Developer Workflow](./uv/uv-workflows-for-mlops.md) when you
+need the `uv` and `just` details.
 
 ## Start The API
 
@@ -26,50 +39,69 @@ That installs the locked environment and runs `uv run pytest tests`.
 just serve
 ```
 
-The development server listens on `http://127.0.0.1:8000`. Open
-`http://127.0.0.1:8000/docs` for the generated OpenAPI UI.
+The development server listens on `http://127.0.0.1:8000`; OpenAPI is at
+`/docs`. The copied development configuration explicitly opts into the
+tutorial-only insecure signing key. Production must supply
+`ACEBET_SECRET_KEY` and an explicit `ACEBET_DEMO_PASSWORD` of at least 12
+characters. Passwords in every environment must be at most 72 UTF-8 bytes.
 
-The current API exposes these routes:
-
-- `GET /`
-- `POST /token`
-- `GET /users/me/`
-- `GET /users/me/items/`
-- `POST /predict/`
-- `GET /limit/`
-
-## Generate Local Assets
-
-The repository includes packaged sample assets, so `just serve` can start
-without a local `data/` or `models/` directory. To exercise the project-root
-asset path instead, run:
+## Highest-Value Validation
 
 ```bash
-just data-check
-just feature-state
-just train
+just review
 ```
 
-That validates `data/atp_data_production.feather`, writes player-state tables,
-and exports a model to `models/model_*.joblib`.
-
-## Build The Docs Site
+This non-mutating gate covers data checks, non-exporting candidate selection,
+tests and packaging/install checks with coverage, Ruff, `ty`, notebook
+execution, docs, and a temporary authenticated API smoke.
 
 ```bash
-just docs-serve
-just docs-build
+just docker-smoke
 ```
 
-Those commands serve or build the Zensical site from `docs/`.
+Docker smoke is separate because Docker is optional and `review` does not
+require a daemon.
 
-## Important Scope Notes
+!!! info "Shortcut"
 
-- The current code does not load `.env` files or secret-file directories.
-- The current code does not implement `/healthz` or `/readyz`.
-- Tutorial authentication uses an in-memory demo user and a static JWT signing key defined in code.
+    **Why it is enough here:** the local API is the only long-running service.
+    **Add it when…** MLflow, a database, or telemetry backends must run
+    together locally; then Compose becomes useful.
 
-## Troubleshooting
+## Safe Raw And Notebook Exercises
 
-- If `uv sync` fails, refresh the lockfile with `uv lock` and sync again.
-- If port `8000` is busy, run `uv run fastapi dev src/acebet/app/main.py --host 127.0.0.1 --port 8001`.
-- If local prediction fails for players that are missing from project data, rerun `just feature-state` or use `testing: true`.
+```bash
+just data-check-sample
+just data-build data/raw/atp_matches_sample.csv var/tutorial/atp_data_sample.feather
+just notebook-check
+```
+
+The raw sample has only 100 rows and demonstrates transformations; it cannot
+rebuild the 44,617-row production dataset. The generic builder always requires
+an explicit input and output. Use ignored `var/` or temporary destinations,
+never the canonical production Feather path.
+
+## Intentional Artifact Regeneration
+
+Packaged fallback assets let `just serve` start without root `data/` or
+`models/` directories. If you intentionally need new local artifacts, use the
+companion workflow:
+
+```bash
+just rebuild-artifacts
+```
+
+!!! warning "Mutating workflow"
+
+    This refreshes player-state artifacts, exports a bundle, and promotes it
+    under ignored local storage. It is not part of the sequential tutorial or
+    `just review`.
+
+## Documentation
+
+`just docs-serve` previews the site on `127.0.0.1:8002`.
+`just docs-build` writes the static site to `site/`.
+
+If port 8000 is busy, use
+`uv run fastapi dev --host 127.0.0.1 --port 8001`. For exact routes and
+errors, see [API Endpoints](./api/sync-endpoints.md).

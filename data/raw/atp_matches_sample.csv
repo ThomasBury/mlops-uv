@@ -1,0 +1,101 @@
+date,p1,p2,rank_p1,rank_p2,sets_p1,sets_p2,elo_p1,elo_p2,atp,location,tournament,series,court,surface,round,best of,comment,ps_p1,ps_p2,b365_p1,b365_p2
+2018-02-24,Fognini F.,Bedene A.,21,43,2.0,1.0,1779.6470682391198,1703.883279465131,15,Rio de Janeiro,Rio Open,ATP500,Outdoor,Clay,Quarterfinals,3,Completed,1.81,2.14,1.8,2.0
+2018-02-24,Tiafoe F.,Chung H.,91,30,2.0,1.0,1563.2008029003418,1806.844354565923,13,Delray Beach,Delray Beach Open,ATP250,Outdoor,Hard,Quarterfinals,3,Completed,3.28,1.4,3.25,1.36
+2018-02-24,Johnson S.,Gojowczyk P.,51,64,0.0,2.0,1668.1835975995305,1699.4869156390816,13,Delray Beach,Delray Beach Open,ATP250,Outdoor,Hard,Semifinals,3,Completed,1.65,2.41,1.66,2.2
+2018-02-24,Jarry N.,Schwartzman D.,94,23,0.0,2.0,1537.3449753985365,1803.4101243249156,15,Rio de Janeiro,Rio Open,ATP500,Outdoor,Clay,Semifinals,3,Completed,4.05,1.29,3.75,1.28
+2018-02-24,Berdych T.,Khachanov K.,17,47,0.0,2.0,1878.7174728353032,1720.5104987058,14,Marseille,Open 13,ATP250,Indoor,Hard,Semifinals,3,Completed,1.73,2.26,1.66,2.2
+2018-02-24,Pouille L.,Ivashka I.,16,193,2.0,0.0,1819.28886041322,1560.2879088910563,14,Marseille,Open 13,ATP250,Indoor,Hard,Semifinals,3,Completed,1.22,4.92,1.22,4.33
+2018-02-24,Verdasco F.,Fognini F.,40,21,2.0,0.0,1728.9858582016366,1798.8204486828288,15,Rio de Janeiro,Rio Open,ATP500,Outdoor,Clay,Semifinals,3,Completed,1.74,2.25,1.72,2.1
+2018-02-25,Verdasco F.,Schwartzman D.,40,23,0.0,2.0,1748.1592386453456,1809.098462487044,15,Rio de Janeiro,Rio Open,ATP500,Outdoor,Clay,The Final,3,Completed,2.22,1.76,2.1,1.72
+2018-02-25,Khachanov K.,Pouille L.,47,16,2.0,1.0,1743.3311691221509,1825.169893430112,14,Marseille,Open 13,ATP250,Indoor,Hard,The Final,3,Completed,2.04,1.88,2.0,1.8
+2018-02-25,Shapovalov D.,Tiafoe F.,46,91,0.0,2.0,1656.2416394169363,1588.883499419053,13,Delray Beach,Delray Beach Open,ATP250,Outdoor,Hard,Semifinals,3,Completed,1.58,2.59,1.53,2.5
+2018-02-25,Tiafoe F.,Gojowczyk P.,91,64,2.0,0.0,1607.9471680722904,1714.0492326845438,13,Delray Beach,Delray Beach Open,ATP250,Outdoor,Hard,The Final,3,Completed,1.9,2.03,1.8,2.0
+2018-02-26,Mayer L.,Elias G.,49,102,2.0,1.0,1645.8905239388846,1540.1582169951853,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,1.41,3.13,1.44,2.62
+2018-02-26,Berlocq C.,Seyboth Wild T.,131,620,2.0,1.0,1508.800418209518,1500.0,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,1.11,7.7,1.1,7.0
+2018-02-26,Basilashvili N.,Donaldson J.,84,59,0.0,1.0,1564.0138891414265,1600.494158506877,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Retired,2.94,1.45,2.75,1.4
+2018-02-26,Tsitsipas S.,Kukushkin M.,82,88,2.0,1.0,1513.6369472914728,1552.462453345267,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,1.6,2.47,1.53,2.37
+2018-02-26,Sakharov G.,Kohlschreiber P.,159,33,0.0,2.0,1510.7633198077783,1738.2674769890948,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,5.32,1.19,4.5,1.2
+2018-02-26,Mayer F.,Bautista Agut R.,70,23,0.0,2.0,1564.890962531562,1806.4556454658816,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,6.65,1.14,5.5,1.14
+2018-02-26,Garcia-Lopez G.,Melzer G.,67,109,2.0,1.0,1523.4313148000483,1506.6052334673786,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,1.72,2.23,1.61,2.2
+2018-02-26,Olivo R.,Domingues J.,170,194,1.0,2.0,1498.459102203497,1515.366563680469,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,1.98,1.91,1.83,1.83
+2018-02-26,Halys Q.,Haase R.,115,43,1.0,2.0,1463.0633566818783,1657.8416358208428,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,2.85,1.47,2.75,1.4
+2018-02-26,Baghdatis M.,Troicki V.,112,66,2.0,0.0,1685.806464055827,1657.0601949321629,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,1.74,2.21,1.72,2.0
+2018-02-26,Delbonis F.,Carballes Baena R.,65,79,2.0,0.0,1636.4421896755134,1547.2151075043869,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,1.56,2.57,1.61,2.2
+2018-02-26,Nishioka Y.,Paire B.,179,46,1.0,2.0,1644.2422226611257,1668.2974085869034,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,2.87,1.47,2.5,1.5
+2018-02-27,Querrey S.,Ebden M.,11,87,1.0,2.0,1725.609051023164,1525.827128246412,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,1.26,4.3,1.22,4.0
+2018-02-27,Rublev A.,Ferrer D.,32,39,0.0,2.0,1777.2241302843713,1727.399421189917,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,1.58,2.51,1.5,2.5
+2018-02-27,Harrison R.,Isner J.,60,19,2.0,0.0,1683.325212312519,1730.1045402551738,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,2.24,1.71,2.25,1.57
+2018-02-27,Albot R.,Anderson K.,86,8,0.0,2.0,1479.950339814966,1811.5626429899528,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,5.62,1.17,5.5,1.14
+2018-02-27,Mannarino A.,Berankis R.,24,108,2.0,0.0,1750.888708461138,1588.8213042427524,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,1.38,3.28,1.36,3.0
+2018-02-27,Nishikori K.,Shapovalov D.,26,45,1.0,2.0,1878.1834634403976,1637.1779707636988,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,1.47,2.85,1.44,2.62
+2018-02-27,Chung H.,Young D.,29,89,2.0,0.0,1781.1616580472116,1597.777660332447,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,1.24,4.44,1.28,3.5
+2018-02-27,Zeballos H.,Bellucci T.,69,132,2.0,1.0,1570.7099541048908,1531.1224016521558,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,2.27,1.7,2.0,1.72
+2018-02-27,Kicker N.,Estrella Burgos V.,96,149,2.0,0.0,1522.6534214258518,1470.646910867661,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,1.29,3.9,1.25,3.75
+2018-02-27,Cecchinato M.,Ofner S.,103,143,0.0,2.0,1384.507022684047,1572.615440291903,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,1.53,2.67,1.5,2.5
+2018-02-27,Dzumhur D.,Maden Y.,30,138,2.0,0.0,1748.972825473926,1490.4877084723148,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,1.43,3.01,1.5,2.5
+2018-02-27,Gulbis E.,Pouille L.,195,15,0.0,2.0,1562.0603780926867,1805.469271053801,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,3.0,1.44,2.75,1.4
+2018-02-27,Jaziri M.,Dimitrov G.,117,4,2.0,1.0,1497.672939721808,1980.2019731043151,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,9.69,1.08,7.5,1.08
+2018-02-27,Kavcic B.,Donskoy E.,116,74,0.0,2.0,1433.4437000356886,1489.0545989860077,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,3.18,1.4,3.4,1.3
+2018-02-27,Pella G.,Moutet C.,57,135,2.0,1.0,1642.9865197515353,1513.383430835729,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,1.32,3.66,1.28,3.5
+2018-02-27,Sandgren T.,Dutra Silva R.,58,106,0.0,2.0,1563.9216037365795,1405.8059436084152,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,2.01,1.88,2.0,1.72
+2018-02-27,Coric B.,Gasquet R.,50,37,2.0,0.0,1655.761582699568,1797.973443717204,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,2.25,1.71,2.25,1.57
+2018-02-27,Haider-Maurer A.,Struff J.L.,417,56,0.0,2.0,1476.1659021127316,1652.8267129678134,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,10.44,1.07,7.0,1.1
+2018-02-27,Lajovic D.,Jarry N.,91,73,1.0,2.0,1558.6664704800023,1531.6566372364075,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,2.1,1.81,1.9,1.8
+2018-02-27,Fabbiano T.,Krajinovic F.,78,34,1.0,2.0,1445.3820056349043,1597.6152563123403,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,3.74,1.31,3.5,1.28
+2018-02-27,Sugita Y.,Ivashka I.,42,147,2.0,0.0,1621.246976195648,1554.406875874164,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,1.63,2.4,1.4,2.75
+2018-02-27,Istomin D.,Khachanov K.,81,41,0.0,2.0,1648.32802807125,1763.0317914984614,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,2.94,1.45,2.62,1.44
+2018-02-27,Herbert P.H.,Sousa J.,99,72,2.0,1.0,1572.7856297829794,1541.8147513822971,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,1st Round,3,Completed,1.81,2.09,1.57,2.25
+2018-02-28,Mcdonald M.,Zverev A.,140,5,0.0,2.0,1438.8078402558192,1870.106912235579,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,,,,
+2018-02-28,Cuevas P.,Ofner S.,31,143,2.0,0.0,1625.4168915175908,1580.710452140357,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,2nd Round,3,Completed,1.26,4.38,1.2,4.33
+2018-02-28,Domingues J.,Fognini F.,194,20,0.0,2.0,1530.5885603498489,1792.2122892930904,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,2nd Round,3,Completed,5.42,1.19,5.0,1.16
+2018-02-28,Garcia-Lopez G.,Delbonis F.,67,65,2.0,1.0,1538.6570503449975,1648.4211464511068,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,2nd Round,3,Completed,2.61,1.56,2.37,1.53
+2018-02-28,Berlocq C.,Mayer L.,131,49,0.0,2.0,1524.39523062504,1657.1663179413144,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,2nd Round,3,Completed,3.22,1.4,2.75,1.4
+2018-02-28,Clezar G.,Monteiro T.,225,125,2.0,1.0,1404.612136024166,1545.8770381986965,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,1st Round,3,Completed,2.5,1.59,2.5,1.5
+2018-02-28,Schwartzman D.,Harrison R.,18,60,1.0,2.0,1834.37914180694,1701.4665558801262,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,2nd Round,3,Completed,1.58,2.56,1.53,2.37
+2018-02-28,Donaldson J.,Ebden M.,59,87,2.0,0.0,1614.820326676485,1550.13169497771,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,2nd Round,3,Completed,1.53,2.68,1.5,2.5
+2018-02-28,Escobedo E.,Chung H.,123,29,0.0,2.0,1516.7106243917035,1789.4222319556852,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,2nd Round,3,Completed,4.14,1.28,4.0,1.22
+2018-02-28,Gojowczyk P.,Gomez L.,51,828,2.0,0.0,1693.3094881068926,1469.893177229275,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,1.09,9.16,1.05,11.0
+2018-02-28,Daniel T.,Lopez F.,107,38,1.0,2.0,1441.4205667891345,1702.2644433172677,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,3.32,1.37,2.75,1.4
+2018-02-28,Kokkinakis T.,Bublik A.,199,142,2.0,0.0,1573.5784980276635,1529.3318090178673,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,1.75,2.19,1.66,2.1
+2018-02-28,Bautista Agut R.,Herbert P.H.,23,99,2.0,1.0,1812.833843070372,1587.3631339331976,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,2nd Round,3,Completed,1.27,4.22,1.28,3.5
+2018-02-28,Thiem D.,Norrie C.,6,113,2.0,1.0,1824.629028207184,1517.931948728375,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,1.25,4.36,1.2,4.33
+2018-02-28,Struff J.L.,Sugita Y.,56,42,0.0,2.0,1661.3266685464584,1634.2062960110698,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,2nd Round,3,Completed,1.83,2.09,1.83,1.83
+2018-02-28,Verdasco F.,Schwartzman D.,27,18,0.0,2.0,1734.937164998939,1822.3205361334508,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,2.3,1.68,2.2,1.61
+2018-02-28,Dzumhur D.,Donskoy E.,30,74,0.0,2.0,1754.868125515014,1502.5152709666866,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,2nd Round,3,Completed,1.59,2.52,1.57,2.25
+2018-02-28,Tsitsipas S.,Kohlschreiber P.,82,33,2.0,1.0,1531.4175222673755,1745.0690953037672,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,2nd Round,3,Completed,2.4,1.65,2.37,1.53
+2018-02-28,Pouille L.,Khachanov K.,15,41,2.0,1.0,1811.7934261386877,1773.9333893516755,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,2nd Round,3,Completed,2.16,1.78,1.83,1.83
+2018-02-28,Jaziri M.,Haase R.,117,43,2.0,0.0,1527.7995518162763,1665.7066751356158,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,2nd Round,3,Completed,2.98,1.45,3.0,1.36
+2018-02-28,Zverev M.,Del Potro J.M.,54,9,0.0,2.0,1596.2467439113025,1929.869656974836,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,5.85,1.17,5.0,1.16
+2018-02-28,Escobedo E.,Sock J.,123,10,2.0,0.0,1490.0456508323891,1769.567483322149,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,1st Round,3,Completed,2.57,1.56,2.5,1.5
+2018-02-28,Paire B.,Coric B.,46,50,0.0,2.0,1683.191393065947,1677.9678865563003,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,2nd Round,3,Completed,2.73,1.52,2.37,1.53
+2018-02-28,Baghdatis M.,Krajinovic F.,112,34,0.0,2.0,1700.4856619800462,1607.0213331289845,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,2nd Round,3,Completed,2.15,1.79,2.1,1.66
+2018-03-01,Mannarino A.,Anderson K.,24,8,0.0,2.0,1759.9232573173451,1815.693936524424,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,2nd Round,3,Completed,3.28,1.39,3.0,1.36
+2018-03-01,Del Potro J.M.,Ferrer D.,9,39,2.0,1.0,1933.9594865053475,1745.6783328360382,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,2nd Round,3,Completed,1.33,3.7,1.33,3.25
+2018-03-01,Lopez F.,Donaldson J.,38,59,0.0,2.0,1718.7560312783685,1627.8752582344423,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,Quarterfinals,3,Completed,2.0,1.93,2.0,1.8
+2018-03-01,Zverev A.,Gojowczyk P.,5,51,2.0,0.0,1882.0931748182584,1700.2379921016127,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,2nd Round,3,Completed,1.28,4.06,1.28,3.5
+2018-03-01,Shapovalov D.,Thiem D.,45,6,0.0,2.0,1662.7833183391915,1829.3043578098377,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,2nd Round,3,Completed,2.21,1.75,2.0,1.72
+2018-03-01,Tsitsipas S.,Jaziri M.,82,117,1.0,2.0,1556.179029509454,1549.8366381842463,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,Quarterfinals,3,Completed,1.56,2.65,1.53,2.5
+2018-03-01,Zverev A.,Harrison R.,5,60,2.0,0.0,1872.5733394745205,1723.3053190479106,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,Quarterfinals,3,Completed,1.32,3.79,1.28,3.75
+2018-03-01,Kokkinakis T.,Lopez F.,199,38,0.0,2.0,1587.551807552435,1708.09472301367,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,2nd Round,3,Completed,1.96,1.94,1.83,1.83
+2018-03-01,Bautista Agut R.,Coric B.,23,50,2.0,0.0,1819.698365995688,1694.2084197980423,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,Quarterfinals,3,Completed,1.67,2.38,1.53,2.5
+2018-03-01,Donskoy E.,Krajinovic F.,74,34,0.0,2.0,1528.4483091334394,1627.2246167420658,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,Quarterfinals,3,Completed,2.45,1.64,2.3,1.61
+2018-03-01,Zeballos H.,Monfils G.,69,35,2.0,1.0,1584.894728726708,1832.5581392745155,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,2nd Round,3,Completed,3.31,1.38,3.25,1.33
+2018-03-01,Clezar G.,Ramos-Vinolas A.,225,22,0.0,2.0,1426.7813531935842,1621.5138584586,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,2nd Round,3,Completed,4.26,1.27,3.5,1.28
+2018-03-01,Jarry N.,Pella G.,73,57,2.0,1.0,1548.8979862950507,1653.2803254102507,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,2nd Round,3,Completed,2.66,1.54,2.5,1.5
+2018-03-01,Pouille L.,Sugita Y.,15,42,2.0,1.0,1826.0567754998597,1651.4527048256411,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,Quarterfinals,3,Completed,1.47,2.95,1.44,2.75
+2018-03-02,Cuevas P.,Mayer L.,31,49,2.0,1.0,1639.3693719645146,1667.333204104677,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,Quarterfinals,3,Completed,1.81,2.15,1.72,2.1
+2018-03-02,Dutra Silva R.,Zeballos H.,106,69,1.0,2.0,1449.4279857960144,1610.6939288532333,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,Quarterfinals,3,Completed,2.05,1.88,2.0,1.8
+2018-03-02,Pouille L.,Krajinovic F.,15,34,2.0,1.0,1834.6308402925176,1638.7945187501589,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,Semifinals,3,Completed,1.66,2.4,1.57,2.37
+2018-03-02,Ramos-Vinolas A.,Jarry N.,22,73,1.0,2.0,1629.3804609209135,1569.5653789275125,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,Quarterfinals,3,Completed,1.71,2.3,1.57,2.37
+2018-03-02,Dutra Silva R.,Kicker N.,106,96,2.0,0.0,1428.6231726568467,1536.2761617045746,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,2nd Round,3,Completed,1.84,2.08,1.83,1.83
+2018-03-02,Bautista Agut R.,Jaziri M.,23,117,2.0,0.0,1830.1581900763765,1566.128683658917,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,Semifinals,3,Completed,1.2,5.37,1.2,4.5
+2018-03-02,Chung H.,Anderson K.,29,8,0.0,2.0,1794.933821615309,1829.1474362151887,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,Quarterfinals,3,Completed,2.26,1.74,2.1,1.72
+2018-03-02,Del Potro J.M.,Thiem D.,9,6,2.0,0.0,1942.048486781799,1838.1736110485783,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,Quarterfinals,3,Completed,1.77,2.2,1.8,2.0
+2018-03-02,Garcia-Lopez G.,Fognini F.,67,20,0.0,2.0,1559.5501540034738,1798.021194944247,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,Quarterfinals,3,Completed,2.92,1.48,2.75,1.44
+2018-03-03,Cuevas P.,Fognini F.,31,20,0.0,2.0,1656.654380436587,1804.4908256879803,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,Semifinals,3,Completed,2.24,1.75,2.2,1.66
+2018-03-03,Del Potro J.M.,Zverev A.,9,5,2.0,0.0,1953.4024841467956,1890.407794738744,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,Semifinals,3,Completed,1.98,1.94,1.9,1.9
+2018-03-03,Pouille L.,Bautista Agut R.,15,23,0.0,2.0,1842.4598065432087,1835.9015429629756,17,Dubai ,Dubai Tennis Championships,ATP500,Outdoor,Hard,The Final,3,Completed,2.43,1.65,2.2,1.66
+2018-03-03,Anderson K.,Donaldson J.,8,59,2.0,1.0,1843.5769143467653,1647.9675610435968,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,Semifinals,3,Completed,1.34,3.63,1.3,3.5
+2018-03-03,Zeballos H.,Jarry N.,69,73,1.0,2.0,1619.7584213938064,1588.293069106932,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,Semifinals,3,Completed,2.09,1.85,1.9,1.9
+2018-03-04,Del Potro J.M.,Anderson K.,9,8,2.0,0.0,1966.532848740593,1851.4136094550156,16,Acapulco,Abierto Mexicano,ATP500,Outdoor,Hard,The Final,3,Completed,1.52,2.75,1.5,2.62
+2018-03-04,Jarry N.,Fognini F.,73,20,1.0,2.0,1605.738153456154,1814.065865178177,18,Sao Paulo,Brasil Open,ATP250,Indoor,Clay,The Final,3,Completed,3.38,1.38,3.25,1.36
