@@ -75,7 +75,7 @@ def validate_prepared_data_contract(df: pd.DataFrame) -> pd.DataFrame:
         )
     if not np.isfinite(numeric_values).all().all():
         raise ValueError("Prepared dataset numeric columns must contain finite values.")
-    validated.loc[:, NUMERIC_CONTRACT_COLUMNS] = numeric_values
+    validated[numeric_values.columns] = numeric_values
 
     if (numeric_values.loc[:, RANK_COLUMNS] <= 0).any().any():
         raise ValueError("Prepared dataset rank columns must be positive.")

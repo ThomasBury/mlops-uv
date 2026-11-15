@@ -33,6 +33,8 @@ def phase5_settings(monkeypatch):
     monkeypatch.setenv("ACEBET_SECRET_KEY", "phase5-test-signing-secret")
     monkeypatch.setenv("ACEBET_ENV", "test")
     monkeypatch.setenv("ACEBET_RATE_LIMITING_ENABLED", "false")
+    monkeypatch.setenv("ACEBET_DEMO_USERNAME", "johndoe")
+    monkeypatch.setenv("ACEBET_DEMO_PASSWORD", "secret")
     get_settings.cache_clear()
     get_demo_users_db.cache_clear()
     yield

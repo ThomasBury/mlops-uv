@@ -36,12 +36,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY . /app
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable
+    uv sync --locked --no-dev --no-editable --reinstall-package acebet
 ```
 
 The first operation installs locked third-party dependencies without the
 project. The second installs the copied project into `/app/.venv` while still
-excluding dev dependencies. Because the install is non-editable, the runtime
+excluding dev dependencies. `--reinstall-package acebet` rebuilds the local
+wheel when application files change, even with a warm uv cache. Because the
+install is non-editable, the runtime
 does not need the source tree.
 
 The runtime installs `libgomp1` and copies only `/app/.venv` from the builder;

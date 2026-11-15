@@ -18,8 +18,12 @@ caller, and returns the evidence needed to interpret one prediction.
 ## Run The Temporary End-To-End Flow
 
 ```bash
+[ -f .env ] || cp .env.example .env
 just manual
 ```
+
+The first command preserves any existing `.env` and creates the local tutorial
+auth configuration only when it is missing.
 
 The recipe starts `fastapi run` on a free local port, waits for readiness,
 obtains a token, exercises both prediction modes, and removes the temporary

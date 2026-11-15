@@ -49,10 +49,11 @@ requires_tracing = pytest.mark.skipif(
 
 
 @pytest.fixture(autouse=True)
-def clear_settings_caches(monkeypatch):
+def clear_settings_caches(monkeypatch, tmp_path):
     for env_key in list(os.environ):
         if env_key.startswith("ACEBET_"):
             monkeypatch.delenv(env_key, raising=False)
+    monkeypatch.chdir(tmp_path)
     get_settings.cache_clear()
     get_demo_users_db.cache_clear()
     yield

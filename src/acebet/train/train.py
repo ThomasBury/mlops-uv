@@ -297,9 +297,11 @@ def export_model(
         timestamp = timestamp.replace(tzinfo=timezone.utc)
     timestamp = timestamp.astimezone(timezone.utc)
     path = output_dir / f"model_{timestamp.strftime('%Y-%m-%d-%H-%M-%S')}.joblib"
-    if path.exists():
-        raise FileExistsError(f"Model artifact already exists: {path}")
-    dump(model, path)
+    try:
+        with path.open("xb") as artifact:
+            dump(model, artifact)
+    except FileExistsError as exc:
+        raise FileExistsError(f"Model artifact already exists: {path}") from exc
     return path
 
 

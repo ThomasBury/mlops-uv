@@ -163,3 +163,26 @@ def test_all_metrics_are_finite_and_in_valid_ranges(fitted_contract_model):
     assert metrics["log_loss"] >= 0.0
     assert 0.0 <= metrics["brier_score"] <= 1.0
     assert 0.0 <= metrics["roc_auc"] <= 1.0
+
+
+@pytest.mark.parametrize("conversion", ["missing", "passthrough", "identity"])
+def test_artifact_requires_the_native_category_conversion(
+    fitted_contract_model, conversion
+):
+    from copy import deepcopy
+    from sklearn.preprocessing import FunctionTransformer
+    from acebet.features import assert_model_artifact_compatible
+
+    model = deepcopy(fitted_contract_model[0])
+    categorical = model.named_steps["preprocessor"].named_transformers_["categorical"]
+    if conversion == "missing":
+        categorical.steps = categorical.steps[:1]
+    else:
+        categorical.steps[1] = (
+            "as_category",
+            "passthrough"
+            if conversion == "passthrough"
+            else FunctionTransformer(feature_names_out="one-to-one"),
+        )
+    with pytest.raises(ValueError, match="as_category conversion"):
+        assert_model_artifact_compatible(model)

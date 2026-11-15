@@ -133,7 +133,7 @@ def test_wheel_metadata_exposes_only_intended_runtime_and_tracing_dependencies(
 
 
 def _venv_python(venv: Path) -> Path:
-    executable = "python.exe" if os.name == "nt" else "bin/python"
+    executable = "Scripts/python.exe" if os.name == "nt" else "bin/python"
     return venv / executable
 
 

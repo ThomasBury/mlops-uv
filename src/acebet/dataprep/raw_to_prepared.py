@@ -175,6 +175,8 @@ def normalize_raw_matches(df: pd.DataFrame) -> pd.DataFrame:
                 [float("nan")] * len(normalized), dtype="float64"
             )
 
+    if normalized["sets_p1"].eq(normalized["sets_p2"]).any():
+        raise ValueError("Raw matches with equal set counts have no winner.")
     normalized["target"] = normalized["sets_p1"] > normalized["sets_p2"]
     normalized["proba_elo"] = normalized.apply(
         lambda row: elo_win_probability(row["elo_p1"], row["elo_p2"]),

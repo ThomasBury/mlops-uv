@@ -54,6 +54,8 @@ def test_documented_canonical_response_matches_real_packaged_bundle(monkeypatch)
     monkeypatch.setenv("ACEBET_SECRET_KEY", "phase7-contract-secret")
     monkeypatch.setenv("ACEBET_ENV", "test")
     monkeypatch.setenv("ACEBET_RATE_LIMITING_ENABLED", "false")
+    monkeypatch.setenv("ACEBET_DEMO_USERNAME", "johndoe")
+    monkeypatch.setenv("ACEBET_DEMO_PASSWORD", "secret")
     get_settings.cache_clear()
     get_demo_users_db.cache_clear()
     try:
@@ -207,7 +209,7 @@ def test_documented_commands_and_docker_claims_match_implementation():
     dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
     for claim in (
         "uv sync --locked --no-dev --no-install-project --no-editable",
-        "uv sync --locked --no-dev --no-editable",
+        "uv sync --locked --no-dev --no-editable --reinstall-package acebet",
         "--mount=type=cache,target=/root/.cache/uv",
         "python:3.12.13-slim-bookworm",
         "copies only `/app/.venv`",
@@ -220,6 +222,10 @@ def test_documented_commands_and_docker_claims_match_implementation():
         "just docker-smoke",
     ):
         assert claim in deployment
+    assert (
+        "uv sync --locked --no-dev --no-editable --reinstall-package acebet"
+        in dockerfile
+    )
     assert dockerfile.count("uv sync --locked --no-dev") == 2
     assert dockerfile.count("FROM ${PYTHON_IMAGE}") == 2
     assert "COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv" in (
@@ -261,7 +267,7 @@ def test_ci_permissions_action_pins_and_dependabot_contract():
     assert "pages: write" in deploy_job
     assert "id-token: write" in deploy_job
     assert "name: github-pages" in deploy_job
-    assert "group: pages" in docs_workflow
+    assert "group: pages-${{ github.ref }}" in docs_workflow
 
     assert "package-ecosystem: github-actions" in dependabot
     assert "package-ecosystem: docker" in dependabot

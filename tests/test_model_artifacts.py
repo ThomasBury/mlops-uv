@@ -272,3 +272,31 @@ def test_atomic_json_preserves_format_and_read_permissions(tmp_path, existing_mo
     )
     assert stat.S_IMODE(destination.stat().st_mode) == (existing_mode or 0o644)
     assert list(tmp_path.iterdir()) == [destination]
+
+
+def test_concurrent_exports_cannot_replace_the_first_artifact(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import datetime, timezone
+    from threading import Barrier
+    from joblib import load
+    from acebet.train.train import export_model
+
+    barrier = Barrier(2)
+    timestamp = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    def export(value):
+        barrier.wait(timeout=5)
+        try:
+            return value, export_model(
+                {"value": value}, tmp_path, exported_at=timestamp
+            )
+        except FileExistsError:
+            return value, None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(export, (1, 2)))
+    winners = [(value, path) for value, path in results if path is not None]
+    assert len(winners) == 1
+    value, path = winners[0]
+    assert load(path) == {"value": value}
+    assert list(tmp_path.iterdir()) == [path]

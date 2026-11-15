@@ -313,3 +313,30 @@ def test_raw_rejects_fractional_ranks_before_integer_conversion(tmp_path, column
     with pytest.raises(ValueError, match="integral"):
         build_prepared_dataset(input_path, output_path)
     assert not output_path.exists()
+
+
+def test_prepared_numeric_strings_become_numeric_columns(tmp_path):
+    from acebet.dataprep.dataprep import NUMERIC_CONTRACT_COLUMNS
+
+    prepared = _valid_prepared_df()
+    for column in NUMERIC_CONTRACT_COLUMNS:
+        prepared[column] = prepared[column].astype(str)
+    result = prepare_data(_write_prepared(tmp_path, prepared))
+    assert all(
+        pd.api.types.is_numeric_dtype(result[column])
+        for column in NUMERIC_CONTRACT_COLUMNS
+    )
+    assert result.loc[0, "rank_diff"] == -10
+
+
+@pytest.mark.parametrize("sets", [0, 1, 2])
+def test_raw_equal_set_counts_reject_without_replacing_output(tmp_path, sets):
+    raw = pd.DataFrame(_raw_rows())
+    raw.loc[0, ["sets_p1", "sets_p2"]] = sets
+    input_path = tmp_path / "raw.csv"
+    output_path = tmp_path / "prepared.feather"
+    raw.to_csv(input_path, index=False)
+    output_path.write_bytes(b"previous output")
+    with pytest.raises(ValueError, match="equal set counts have no winner"):
+        build_prepared_dataset(input_path, output_path)
+    assert output_path.read_bytes() == b"previous output"

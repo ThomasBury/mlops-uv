@@ -10,7 +10,7 @@ import numpy.typing as npt
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OrdinalEncoder
+from sklearn.preprocessing import FunctionTransformer, OrdinalEncoder
 
 DATE_COLUMN = "date"
 
@@ -157,10 +157,16 @@ def assert_model_artifact_compatible(model: PredictionEstimator) -> None:
 
     categorical_transformer = preprocessor.named_transformers_.get("categorical")
     categorical_steps = getattr(categorical_transformer, "named_steps", {})
-    if not isinstance(categorical_steps.get("ordinal"), OrdinalEncoder):
+    converter = categorical_steps.get("as_category")
+    if (
+        not isinstance(categorical_steps.get("ordinal"), OrdinalEncoder)
+        or not isinstance(converter, FunctionTransformer)
+        or converter.func is not ordinal_codes_as_categories
+    ):
         raise ValueError(
             "Model artifact preprocessing mismatch: categorical features must "
-            "use OrdinalEncoder before LightGBM native categorical handling."
+            "use OrdinalEncoder followed by the as_category conversion "
+            "before LightGBM native categorical handling."
         )
 
 
