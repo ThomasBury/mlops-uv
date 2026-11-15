@@ -1,54 +1,38 @@
+"""Pydantic contracts exposed by the AceBet API."""
+
+from __future__ import annotations
+
 from datetime import date
-from pydantic import BaseModel
+from enum import Enum, IntEnum
+from typing import Annotated, Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
 
 
 class Token(BaseModel):
-    """
-    Data model for access tokens.
-
-    Attributes
-    ----------
-    access_token : str
-        The access token.
-    token_type : str
-        The token type.
-
-    """
+    """OAuth2 access token."""
 
     access_token: str
     token_type: str
 
 
 class TokenData(BaseModel):
-    """
-    Data model for token data.
-
-    Attributes
-    ----------
-    username : str or None
-        The username associated with the token.
-
-    """
+    """Decoded token subject."""
 
     username: str | None = None
 
 
 class User(BaseModel):
-    """
-    Data model for user information.
-
-    Attributes
-    ----------
-    username : str
-        The username of the user.
-    email : str or None
-        The email address of the user.
-    full_name : str or None
-        The full name of the user.
-    disabled : bool or None
-        Whether the user is disabled.
-
-    """
+    """Public user information."""
 
     username: str
     email: str | None = None
@@ -57,91 +41,250 @@ class User(BaseModel):
 
 
 class UserInDB(User):
-    """
-    Data model for user information stored in the database.
-
-    Attributes
-    ----------
-    hashed_password : str
-        The hashed password of the user.
-
-    """
+    """User information stored by the demo authentication backend."""
 
     hashed_password: str
 
 
+class TournamentSeries(str, Enum):
+    """Tournament series represented in the fitted feature contract."""
+
+    ATP250 = "ATP250"
+    ATP500 = "ATP500"
+    GRAND_SLAM = "Grand Slam"
+    INTERNATIONAL = "International"
+    INTERNATIONAL_GOLD = "International Gold"
+    MASTERS = "Masters"
+    MASTERS_1000 = "Masters 1000"
+    MASTERS_CUP = "Masters Cup"
+
+
+class Court(str, Enum):
+    """Match court setting."""
+
+    INDOOR = "Indoor"
+    OUTDOOR = "Outdoor"
+
+
+class Surface(str, Enum):
+    """Match playing surface."""
+
+    CARPET = "Carpet"
+    CLAY = "Clay"
+    GRASS = "Grass"
+    HARD = "Hard"
+
+
+class MatchRound(str, Enum):
+    """Tournament round represented in the fitted feature contract."""
+
+    FIRST = "1st Round"
+    SECOND = "2nd Round"
+    THIRD = "3rd Round"
+    FOURTH = "4th Round"
+    QUARTERFINALS = "Quarterfinals"
+    ROUND_ROBIN = "Round Robin"
+    SEMIFINALS = "Semifinals"
+    FINAL = "The Final"
+
+
+class BestOf(IntEnum):
+    """Supported maximum set counts."""
+
+    THREE = 3
+    FIVE = 5
+
+
+PREDICTION_CONTEXT_FIELDS = ("series", "court", "surface", "round", "best_of")
+PREDICTION_CONTEXT_ALLOWED_VALUES: dict[str, tuple[str | int, ...]] = {
+    "series": tuple(member.value for member in TournamentSeries),
+    "court": tuple(member.value for member in Court),
+    "surface": tuple(member.value for member in Surface),
+    "round": tuple(member.value for member in MatchRound),
+    "best_of": tuple(member.value for member in BestOf),
+}
+
+PlayerName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
 class PredictionRequest(BaseModel):
-    """
-    Data model for prediction requests.
+    """Complete, typed match context required for synchronous inference."""
 
-    Parameters
-    ----------
-    p1_name : str
-        The name of player 1.
-    p2_name : str
-        The name of player 2.
-    date : date
-        The date of the match.
-    testing : bool, optional
-        Whether to use the testing asset resolution path.
-    atp : int, optional
-        ATP points/category for the tournament.
-    location : str, optional
-        City or country where the match is played.
-    tournament : str, optional
-        Name of the tournament.
-    series : str, optional
-        Tournament series (e.g., Grand Slam, ATP500).
-    court : str, optional
-        Type of court (e.g., Indoor, Outdoor).
-    surface : str, optional
-        Type of surface (e.g., Hard, Clay, Grass).
-    round : str, optional
-        The round of the tournament.
-    best_of : int, optional
-        The number of sets (e.g., 3 or 5).
+    model_config = ConfigDict(extra="forbid")
 
-    Attributes
-    ----------
-    p1_name : str
-        The name of player 1.
-    p2_name : str
-        The name of player 2.
-    date : date
-        The date of the match.
-    testing : bool
-        Whether the testing asset resolution path is used.
-    """
-
-    p1_name: str
-    p2_name: str
+    p1_name: PlayerName
+    p2_name: PlayerName
     date: date
-    testing: bool = False
-    atp: int | None = None
-    location: str | None = None
-    tournament: str | None = None
-    series: str | None = None
-    court: str | None = None
-    surface: str | None = None
-    round: str | None = None
-    best_of: int | None = None
+    series: TournamentSeries
+    court: Court
+    surface: Surface
+    round: MatchRound
+    best_of: BestOf
+
+    @field_validator(*PREDICTION_CONTEXT_FIELDS, mode="before")
+    @classmethod
+    def reject_unsupported_context(cls, value: object, info: ValidationInfo) -> object:
+        """Tag well-formed unsupported values for route-specific error mapping."""
+        field = info.field_name
+        if field is None:
+            return value
+        allowed_values = PREDICTION_CONTEXT_ALLOWED_VALUES[field]
+        expected_type = int if field == "best_of" else str
+        is_expected_type = isinstance(value, expected_type)
+        if field == "best_of" and isinstance(value, bool):
+            is_expected_type = False
+        if field == "best_of" and not is_expected_type:
+            raise ValueError("best_of must be an integer")
+        if is_expected_type and value not in allowed_values:
+            raise PydanticCustomError(
+                "unsupported_context_value",
+                "Unsupported match context value",
+                {
+                    "field": field,
+                    "submitted_value": value,
+                    "allowed_values": list(allowed_values),
+                },
+            )
+        return value
+
+    @model_validator(mode="after")
+    def reject_equal_players(self) -> PredictionRequest:
+        """Require distinct case-sensitive player identities after trimming."""
+        if self.p1_name == self.p2_name:
+            raise PydanticCustomError(
+                "equal_players",
+                "Player names must be distinct",
+                {"player": self.p1_name},
+            )
+        return self
+
+
+class ModelIdentity(BaseModel):
+    """Identity read from a validated schema-v2 model bundle."""
+
+    kind: Literal["elo_baseline", "lightgbm"]
+    version: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class FeatureFreshness(BaseModel):
+    """Calendar-day age of each player's online feature snapshot."""
+
+    p1_as_of_date: date
+    p2_as_of_date: date
+    p1_age_days: int = Field(ge=0)
+    p2_age_days: int = Field(ge=0)
 
 
 class PredictionResponse(BaseModel):
-    """
-    Data model for prediction responses.
+    """Final prediction response contract."""
 
-    Attributes
-    ----------
-    player_name : str or None
-        The name of the predicted winning player.
-    prob : float or None
-        The predicted winning probability.
-    class_ : int or None
-        The class of the prediction (0 or 1).
+    predicted_winner: str
+    predicted_class: Literal[0, 1]
+    p1_win_probability: float = Field(ge=0, le=1)
+    prediction_mode: Literal["production", "testing"]
+    model: ModelIdentity
+    feature_freshness: FeatureFreshness
 
-    """
 
-    player_name: str | None = None
-    prob: float | None = None
-    class_: int | None = None
+class EqualPlayersContext(BaseModel):
+    """Context for an equal-player validation failure."""
+
+    player: str
+
+
+class UnknownPlayersContext(BaseModel):
+    """Context for missing player snapshots."""
+
+    players: list[str]
+
+
+class UnsupportedContextValue(BaseModel):
+    """One rejected match-context value."""
+
+    field: Literal["series", "court", "surface", "round", "best_of"]
+    submitted_value: str | int
+    allowed_values: list[str | int]
+
+
+class UnsupportedContextValuesContext(BaseModel):
+    """Context for all unsupported values in request-field order."""
+
+    invalid_fields: list[UnsupportedContextValue]
+
+
+class NegativeSnapshotPlayer(BaseModel):
+    """One player snapshot newer than the requested match date."""
+
+    player: str
+    role: Literal["p1", "p2"]
+    as_of_date: date
+    age_days: int = Field(lt=0)
+
+
+class NegativeSnapshotAgeContext(BaseModel):
+    """Context for every future-dated player snapshot."""
+
+    match_date: date
+    affected_players: list[NegativeSnapshotPlayer]
+
+
+class PredictionFailedContext(BaseModel):
+    """Sanitized context for expected scoring failures."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class EqualPlayersError(BaseModel):
+    """Equal-player prediction-domain error."""
+
+    code: Literal["equal_players"]
+    message: str
+    context: EqualPlayersContext
+
+
+class UnknownPlayersError(BaseModel):
+    """Unknown-player prediction-domain error."""
+
+    code: Literal["unknown_players"]
+    message: str
+    context: UnknownPlayersContext
+
+
+class UnsupportedContextValuesError(BaseModel):
+    """Unsupported-context prediction-domain error."""
+
+    code: Literal["unsupported_context_values"]
+    message: str
+    context: UnsupportedContextValuesContext
+
+
+class NegativeSnapshotAgeError(BaseModel):
+    """Future-snapshot prediction-domain error."""
+
+    code: Literal["negative_snapshot_age"]
+    message: str
+    context: NegativeSnapshotAgeContext
+
+
+class PredictionFailedError(BaseModel):
+    """Expected feature/scoring prediction-domain error."""
+
+    code: Literal["prediction_failed"]
+    message: str
+    context: PredictionFailedContext
+
+
+PredictionDomainError = (
+    EqualPlayersError
+    | UnknownPlayersError
+    | UnsupportedContextValuesError
+    | NegativeSnapshotAgeError
+    | PredictionFailedError
+)
+
+
+class PredictionDomainErrorResponse(BaseModel):
+    """HTTP wrapper for structured prediction-domain failures."""
+
+    detail: PredictionDomainError

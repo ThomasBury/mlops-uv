@@ -1,28 +1,68 @@
+---
+title: Training and Inference
+description: Use this page for the practical local training, inference, and asset-resolution workflow that sits next to the main tutorial.
+---
+
 # Training and Inference
 
-This page covers the artifact flow and the runtime feature contract used by the
-current codebase.
+This page is a practical workflow guide, not part of the sequential tutorial.
+Use it when you want the concrete local training, promotion, and inference path
+in one place.
 
 ## Training Flow
 
-```bash
+```bash title="Run the non-mutating training checks"
 just data-check
-just feature-state
-just train
+just feature-state-check
+just train-check
 ```
 
-That sequence does three distinct jobs:
+That sequence validates the canonical prepared data, exercises player-state
+generation in temporary storage, and trains and compares all candidates without exporting or promoting a model.
 
-- `just data-check` validates `data/atp_data_production.feather`.
-- `just feature-state` derives player-state tables for project and packaged use.
-- `just train` exports a timestamped model to `models/model_*.joblib`.
+Training uses one deterministic date-grouped temporal selection holdout. Preparation
+normalizes and stably sorts calendar dates, then retains them separately from
+the feature matrix. The nominal cutoff is two-thirds through the selected rows
+and moves to the beginning of that date: training receives strictly earlier
+dates, while the selection holdout receives the cutoff date and everything later. Training
+fails with a contextual error if the window is reversed, empty, too small,
+non-monotonic, or cannot produce two non-empty partitions that each contain
+both target classes. No independent final test is implemented. Existing Python
+`test` names and metadata fields refer to this selection holdout.
 
-The training path does not create a `model_*.metadata.json` sidecar.
+Artifact changes are a separate, explicit workflow:
+
+```bash title="Intentionally refresh, export, and promote artifacts"
+just rebuild-artifacts
+```
+
+That command refreshes project and packaged player-state files, then exports and
+promotes a model under ignored `var/models/`. Use `just rebuild-artifacts models`
+only when you intentionally want the serving model under `models/`.
+
+To prove the committed raw sample can be rebuilt without replacing canonical or
+packaged data, run:
+
+```bash title="Rebuild the raw sample in temporary storage"
+just data-check-sample
+```
+
+For a caller-selected destination, the generic builder requires both paths:
+
+```bash title="Explicit raw-to-prepared output"
+just data-build data/raw/atp_matches_sample.csv build/atp_data_sample.feather
+```
+
+An exported bundle includes:
+
+- `model_*.joblib`
+- `model_*.metadata.json`
+- `model_*.modelcard.md`
 
 Optional MLflow tracking is available through:
 
-```bash
-just train-mlflow
+```bash title="Train with MLflow enabled"
+just train-local-mlflow
 ```
 
 That recipe opts into the `mlops` dependency group before training. In the
@@ -32,79 +72,147 @@ default local setup, MLflow uses:
 - `acebet` as the experiment name
 - `mlartifacts/` as the local artifact root
 
-The training code logs run parameters, metrics, the sklearn model, and the
-exported joblib artifact when one exists. If you need a different backend, the
-underlying CLI supports `--tracking-uri`, `--experiment-name`, and
-`--artifact-root`.
+The training code computes accuracy, log loss, Brier score, and ROC AUC for the
+constant, Elo, and LightGBM candidates from the same selection holdout. Only unrounded log
+loss selects a model: learned candidates must beat constant by `0.005`, and
+LightGBM must then beat a servable Elo candidate by `0.005`. These margins are
+fixed policy, not CLI options. MLflow logs all comparisons, selection deltas,
+the selected sklearn model, and all three bundle files when exported. The CLI
+still supports `--tracking-uri`, `--experiment-name`, and `--artifact-root`.
+
+For the exact local artifact bundle and promotion workflow, read
+[Model Artifacts and Promotion](./model-artifacts-and-promotion.md).
 
 ## Feature Contract
 
-The shared contract is implemented across:
+Training and serving share one ordered allowlist:
 
-- `select_model_features`
-- `build_match_feature_row` and `add_derived_match_features`
-- `align_features_to_model`
+| Position | Type | Column |
+| ---: | --- | --- |
+| 1 | numeric | `best of` |
+| 2 | numeric | `rank_p1` |
+| 3 | numeric | `rank_p2` |
+| 4 | numeric | `elo_p1` |
+| 5 | numeric | `elo_p2` |
+| 6 | numeric | `proba_elo` |
+| 7 | numeric | `year` |
+| 8 | numeric | `month` |
+| 9 | numeric | `day` |
+| 10 | numeric | `rank_diff` |
+| 11 | categorical | `p1` |
+| 12 | categorical | `p2` |
+| 13 | categorical | `series` |
+| 14 | categorical | `court` |
+| 15 | categorical | `surface` |
+| 16 | categorical | `round` |
+| 17 | categorical | `best_ranked` |
 
-Operationally, that means:
+`select_model_features(...)` returns exactly this order and silently discards
+every unrelated raw column. If any required column is absent, training or
+prediction fails before fit/scoring with all missing names in the error. Feature
+alignment never creates a missing column or pads it with `pd.NA`.
 
-- Forbidden columns such as `target`, final scores, bookmaker odds, and `comment` are dropped before fitting or inference.
-- The prepared training dataset must already contain `proba_elo`.
+The preprocessing `ColumnTransformer` passes the 10 numeric values through
+unchanged. It applies `OrdinalEncoder` only to the 7 categorical fields and
+marks those codes as unordered categories for LightGBM's native categorical
+splits. Unknown categories are accepted at prediction time and handled as
+missing categories. Legacy artifacts that ordinal-encoded the entire dataframe,
+or that expose a different feature order, fail during loading.
+
+Derived and online behavior remains shared:
+
+- The raw builder derives `proba_elo` from raw ELO columns.
 - Online inference recomputes `proba_elo` from the latest player ELO values.
-- Request field `best_of` is translated internally to the `"best of"` column expected by the model features.
+- Date derives `year`, `month`, and `day`, then remains outside the model.
+- Request field `best_of` becomes the internal `"best of"` feature.
+- Online scoring requires explicit `series`, `court`, `surface`, `round`,
+  and `best_of`; it has no silent match-context defaults.
+- Legacy `atp`, `location`, and `tournament` request fields are rejected.
 
 ## Inference Flow
 
 Start the API:
 
-```bash
+```bash title="Start the API"
+cp .env.example .env
 just serve
 ```
 
-Get a token:
+Leave that command running. In another terminal, get a token:
 
-```bash
+```bash title="Request a bearer token"
 just token-json
 ```
 
 Exercise prediction in testing mode:
 
-```bash
+```bash title="Exercise testing-mode prediction"
 just predict-testing
 ```
 
 Exercise prediction in production mode:
 
-```bash
+```bash title="Exercise production-mode prediction"
 just predict-production
 ```
 
-Both prediction modes authenticate the same way. The `testing` flag only changes
-which runtime assets are preferred.
+Both prediction modes authenticate the same way. Runtime mode is selected by
+route: `just predict-production` calls `/predict/production`, while
+`just predict-testing` calls `/predict/testing`. The testing route is available
+only when `ACEBET_ENV` is `development` or `test`.
 
 ## Asset Resolution
 
-- Production player stats: `data/latest_player_stats.feather`, then packaged production stats.
-- Testing player stats: packaged sample stats, then packaged production stats, then project data.
-- Models: `models/`, then `src/acebet/data/`, then the project root.
+- With no overrides, production uses the packaged promoted bundle and packaged
+  `latest_player_stats.feather` for zero-setup serving.
+- `ACEBET_MODEL_DIR` overrides only the production model directory and requires
+  `promoted_model.json` there.
+- `ACEBET_DATA_DIR` overrides only the production data directory and requires
+  `latest_player_stats.feather` there.
+- Testing always uses packaged sample player state and the packaged promoted
+  model, regardless of production overrides.
 
-If you train a fresh model locally, that exported artifact is preferred over the
-packaged fallback on the next API startup.
+Every model directory must contain `promoted_model.json`; there is no
+newest-filename fallback. A missing configured path fails startup rather than
+silently using packaged assets. The loader validates schema-v2 sidecars, hashes,
+selection, model kind, feature contract, and exact package version before
+joblib deserialization. Direct-file loading is reserved for trusted tooling and
+still requires both complete sidecars.
+
+To serve the artifacts produced by local promotion:
+
+```bash
+just rebuild-artifacts models
+just serve-with-assets
+```
+
+Checksums detect accidental or malicious changes but do not establish who
+created an artifact. Because joblib uses pickle, load bundles only from trusted
+sources.
 
 ## Manual HTTP Example
 
-```bash
+```bash title="Token request with curl"
 curl -X POST http://127.0.0.1:8000/token \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   -d 'username=johndoe&password=secret'
 ```
 
-```json
+Those are the default demo credentials. Override them with
+`ACEBET_DEMO_USERNAME` and `ACEBET_DEMO_PASSWORD` if needed.
+
+```json title="Example prediction payload"
 {
   "p1_name": "Fognini F.",
   "p2_name": "Jarry N.",
   "date": "2018-03-04",
+  "series": "ATP250",
+  "court": "Outdoor",
   "surface": "Clay",
-  "round": "Final",
-  "testing": false
+  "round": "The Final",
+  "best_of": 3
 }
 ```
+
+Send that body to `/predict/production` for production assets or to
+`/predict/testing` for packaged sample/testing assets outside production.

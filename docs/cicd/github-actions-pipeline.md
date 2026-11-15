@@ -1,50 +1,64 @@
+---
+title: CI/CD
+description: Reference the Python matrix, integration coverage, notebook execution, Docker smoke, and docs workflow.
+---
+
 # CI/CD
 
-The repository currently has two GitHub Actions workflows: one for the Python
-test suite and one for the Zensical documentation site.
+AceBet has a main validation workflow and one documentation workflow.
 
-## Test Workflow
+## Main Workflow
 
-`.github/workflows/main.yaml` runs on pushes to `main` and currently does this:
-
-```yaml
-- uses: actions/checkout@v4
-- uses: astral-sh/setup-uv@v5
-- run: uv sync --all-extras --dev
-- run: uv run pytest tests
-```
-
-That is the current CI contract. It does not run Docker smoke tests, docs
-builds, or extra health/readiness checks.
-
-## Docs Workflow
-
-`.github/workflows/docs.yaml` builds the Zensical site when docs-related files
-change, and deploys the generated `site/` directory to GitHub Pages on pushes
-to `main` or `master`.
-
-The build job now matches the repo layout:
-
-```yaml
-- uses: astral-sh/setup-uv@v5
-- run: uv sync --frozen
-- run: uv run zensical build
-```
-
-## Recommended Local Checks
+Python 3.10, 3.11, and 3.12 each run:
 
 ```bash
-uv sync
-just test
-just docs-build
-just build
+uv sync --locked --dev
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run ty check
+uv run pytest tests -m "not (api or tracing or packaging)"
 ```
 
-This page prefers the maintained `just` entrypoints where they exist, so local
-checks stay aligned with the repo workflow instead of duplicating lower-level
-tool invocations in multiple places.
+Python 3.12 uploads unit branch coverage. A dependent 3.12 integration job
+runs the temporary data/feature checks, non-exporting selection, and
+`just notebook-check`; installs tracing with
+`uv sync --locked --dev --extra tracing`; then runs API, tracing, packaging,
+wheel, sdist, and isolated-install tests.
 
-## When To Refresh The Lockfile
+Unit and integration coverage are combined. CI enforces at least 80% overall
+branch coverage and 100% for the critical artifact and prediction modules.
+`git diff --exit-code` proves the checks did not change tracked files.
 
-Run `uv lock` after changing Python dependencies, including docs tooling such as
-Zensical, then commit the updated `uv.lock`.
+The Docker job runs `just docker-smoke`, not merely `docker-build`. It checks
+the non-root runtime, health, readiness, authentication, caller identity, and a
+production prediction.
+
+## Documentation Workflow
+
+`.github/workflows/docs.yaml` separates its build and deployment jobs. The
+build installation step is exactly:
+
+```bash
+uv sync --locked --dev
+```
+
+It builds Zensical for relevant pull requests with only read access. Pushes to
+`main` additionally upload the Pages artifact, then a dependent deployment job
+uses the `github-pages` environment and alone receives `pages: write` and
+`id-token: write`. Pages concurrency prevents overlapping deployments.
+
+Every third-party action is pinned to a full commit SHA with its release in a
+comment. Dependabot checks GitHub Actions and Docker references weekly.
+
+## Dependency And Lock Discipline
+
+The pipeline does not use all extras. Notebook dependencies remain in
+`dependency-groups.dev`; MLflow remains in `mlops`; OpenTelemetry is installed
+only with the `tracing` extra.
+Distribution tests prove those tools do not leak into the default wheel.
+
+Run `uv lock` after an intentional dependency declaration change. Every CI
+sync uses `--locked`, so a stale lock fails rather than being rewritten.
+
+The closest local gate is `just review`; run `just docker-smoke` separately
+when a Docker daemon is available.

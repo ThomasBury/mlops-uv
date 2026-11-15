@@ -1,0 +1,153 @@
+{
+  "candidates": {
+    "constant": {
+      "metrics": {
+        "accuracy": 0.500570125427594,
+        "brier_score": 0.2499997550087346,
+        "log_loss": 0.6931466905773698,
+        "roc_auc": 0.5
+      }
+    },
+    "elo": {
+      "log_loss_improvement_over_constant": 0.09105077458182265,
+      "metrics": {
+        "accuracy": 0.6761687571265679,
+        "brier_score": 0.20657695165051232,
+        "log_loss": 0.6020959159955471,
+        "roc_auc": 0.7409533913730875
+      },
+      "servable": true
+    },
+    "lightgbm": {
+      "log_loss_improvement_over_constant": 0.0750583788813125,
+      "metrics": {
+        "accuracy": 0.6630558722919042,
+        "brier_score": 0.21382612034175996,
+        "log_loss": 0.6180883116960573,
+        "roc_auc": 0.7239029134292342
+      },
+      "parameters": {
+        "bagging_seed": 42,
+        "boosting_type": "gbdt",
+        "colsample_bytree": 0.4,
+        "data_random_seed": 42,
+        "deterministic": true,
+        "feature_fraction_seed": 42,
+        "feature_pre_filter": false,
+        "force_col_wise": true,
+        "metric": "binary_logloss",
+        "min_child_samples": 20,
+        "n_estimators": 45,
+        "n_jobs": 1,
+        "num_leaves": 4,
+        "objective": "binary",
+        "random_state": 42,
+        "reg_alpha": 0.0,
+        "reg_lambda": 0.0,
+        "seed": 42,
+        "subsample": 0.7957346694832138,
+        "subsample_freq": 4,
+        "verbosity": -1
+      },
+      "servable": true
+    },
+    "training_prevalence": 0.4997128087306146
+  },
+  "dataset": {
+    "holdout_cutoff": "2016-06-20",
+    "observed_window": {
+      "end_date": "2017-03-04",
+      "start_date": "2015-03-12"
+    },
+    "requested_window": {
+      "end_date": "2017-03-04",
+      "start_date": "2015-03-04"
+    },
+    "row_counts": {
+      "test": 1754,
+      "total": 5236,
+      "train": 3482
+    },
+    "source_path": "data/atp_data_production.feather",
+    "source_sha256": "cb27873cafc691f2e0e89a9e44478da240bd6ed3f507cb283b1ea2e720c044d3",
+    "test_date_range": {
+      "end_date": "2017-03-04",
+      "start_date": "2016-06-20"
+    },
+    "train_date_range": {
+      "end_date": "2016-06-19",
+      "start_date": "2015-03-12"
+    }
+  },
+  "exported_at_utc": "2026-08-02T12:59:07.106770+00:00",
+  "feature_contract": {
+    "categorical_columns": [
+      "p1",
+      "p2",
+      "series",
+      "court",
+      "surface",
+      "round",
+      "best_ranked"
+    ],
+    "columns": [
+      "best of",
+      "rank_p1",
+      "rank_p2",
+      "elo_p1",
+      "elo_p2",
+      "proba_elo",
+      "year",
+      "month",
+      "day",
+      "rank_diff",
+      "p1",
+      "p2",
+      "series",
+      "court",
+      "surface",
+      "round",
+      "best_ranked"
+    ],
+    "count": 17,
+    "numeric_columns": [
+      "best of",
+      "rank_p1",
+      "rank_p2",
+      "elo_p1",
+      "elo_p2",
+      "proba_elo",
+      "year",
+      "month",
+      "day",
+      "rank_diff"
+    ]
+  },
+  "mlflow_run_id": null,
+  "model": {
+    "filename": "model_2026-08-02-12-59-07.joblib",
+    "kind": "elo_baseline",
+    "package": {
+      "name": "acebet",
+      "version": "0.2.0"
+    },
+    "serialization": "joblib",
+    "sha256": "a51b64ddddc094260ff41aa68beba9662bdb7769076130f55b1ed54a51a703c7",
+    "trusted_only": true
+  },
+  "schema_version": 2,
+  "selection": {
+    "deltas": {
+      "constant_minus_elo_log_loss": 0.09105077458182265,
+      "constant_minus_lightgbm_log_loss": 0.0750583788813125,
+      "elo_minus_lightgbm_log_loss": -0.015992395700510142
+    },
+    "learned_vs_constant_margin": 0.005,
+    "lightgbm_vs_elo_margin": 0.005,
+    "primary_metric": "log_loss",
+    "reason": "Both candidates are servable, but LightGBM does not beat Elo by the required 0.005 margin.",
+    "reason_code": "elo_preferred_challenger_margin_not_met",
+    "selected_model_kind": "elo_baseline",
+    "status": "selected"
+  }
+}
