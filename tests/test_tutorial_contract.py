@@ -245,6 +245,15 @@ def test_ci_permissions_action_pins_and_dependabot_contract():
 
     global_permissions = docs_workflow.split("jobs:", maxsplit=1)[0]
     build_job, deploy_job = docs_workflow.split("  deploy:", maxsplit=1)
+    integration = main_workflow.split("  integration:", maxsplit=1)[1].split(
+        "  docker:", maxsplit=1
+    )[0]
+    assert (
+        integration.index("Run integration, API, tracing, and packaging tests")
+        < integration.index("Download unit coverage")
+        < integration.index("Combine and enforce coverage guarantees")
+    )
+
     assert "contents: read" in global_permissions
     assert "pages: write" not in global_permissions
     assert "id-token: write" not in global_permissions

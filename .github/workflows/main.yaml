@@ -74,11 +74,6 @@ jobs:
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
       - name: Install core and development dependencies
         run: uv sync --locked --dev
-      - name: Download unit coverage
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
-        with:
-          name: unit-coverage
-          path: .
       - name: Run non-mutating generation checks
         run: just data-check-sample feature-state-check train-check
       - name: Execute tutorial notebook without modifying it
@@ -93,6 +88,12 @@ jobs:
           --cov=src/acebet
           --cov-branch
           --cov-report=
+      # pytest-cov clears .coverage.* at startup; restore unit data after tests.
+      - name: Download unit coverage
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: unit-coverage
+          path: .
       - name: Combine and enforce coverage guarantees
         run: |
           mv .coverage .coverage.integration
