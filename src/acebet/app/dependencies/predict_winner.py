@@ -9,6 +9,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from joblib import load
+from sklearn.utils.validation import check_is_fitted
 
 from acebet.app.dependencies.data_models import FeatureFreshness, ModelIdentity
 from acebet.features import (
@@ -214,6 +215,7 @@ def load_model_bundle(model_path: str | Path) -> LoadedModelBundle:
     else:
         raise ValueError(f"Unsupported selected model kind {model_kind!r}.")
     assert_model_artifact_compatible(model)
+    check_is_fitted(model)
     identity = ModelIdentity(
         kind=model_kind,
         version=Path(model_metadata["filename"]).stem,

@@ -651,3 +651,71 @@ def test_custom_request_methods_share_series_on_matched_and_unmatched_paths(
             ) == duration_before + len(methods)
         metrics = client.get("/metrics").text
         assert all(f'method="{method}"' not in metrics for method in methods)
+
+
+@pytest.mark.parametrize("fitted", [False, True])
+def test_startup_requires_a_fitted_classifier_in_a_checksum_valid_bundle(
+    tmp_path, monkeypatch, phase5_settings, fitted
+):
+    from sklearn.exceptions import NotFittedError
+
+    from acebet.features import assert_model_artifact_compatible
+    from acebet.model_artifacts import (
+        candidates_with_selection_details,
+        compute_selection,
+        model_metadata_path,
+        sha256_file,
+        write_json,
+    )
+    from acebet.train.promote import promote_model
+    from acebet.train.train import (
+        build_model,
+        export_model,
+        get_lgb_params,
+        prepare_data_for_training_clf,
+        write_model_card,
+    )
+
+    data = prepare_data_for_training_clf("2015-03-04", "2017-03-04")
+    model = build_model(get_lgb_params())
+    if fitted:
+        model.fit(data.features, data.target)
+    else:
+        model.named_steps["preprocessor"].fit(data.features, data.target)
+    assert_model_artifact_compatible(model)
+    path = export_model(model, tmp_path)
+    metadata = read_json(
+        main.PACKAGE_DATA_DIR / "model_2026-08-02-12-59-07.metadata.json"
+    )
+    metrics = {
+        name: dict(metadata["candidates"][name]["metrics"])
+        for name in ("constant", "elo", "lightgbm")
+    }
+    # Synthetic selection evidence keeps the fixture valid up to the fitted-state check.
+    metrics["lightgbm"]["log_loss"] = metrics["elo"]["log_loss"] - 0.01
+    metadata["candidates"] = candidates_with_selection_details(
+        metrics, metadata["candidates"]["training_prevalence"], get_lgb_params()
+    )
+    metadata["selection"] = compute_selection(metadata["candidates"])
+    metadata["model"].update(
+        filename=path.name, kind="lightgbm", sha256=sha256_file(path)
+    )
+    write_json(model_metadata_path(path), metadata)
+    write_model_card(path, metadata)
+    promote_model(model_path=path)
+    monkeypatch.setenv("ACEBET_MODEL_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    application = create_app()
+    if fitted:
+        with TestClient(application) as client:
+            assert client.get("/readyz").status_code == 200
+            assert (
+                application.state.runtime_assets.production.model_identity.kind
+                == "lightgbm"
+            )
+    else:
+        with pytest.raises(NotFittedError, match="not fitted"):
+            with TestClient(application):
+                pytest.fail("Startup accepted an unfitted classifier")
+    assert application.state.runtime_assets.production is None
+    assert application.state.runtime_assets.testing is None

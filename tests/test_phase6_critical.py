@@ -397,7 +397,10 @@ def test_valid_lightgbm_bundle_reaches_feature_contract_validation(
             "sha256": "0" * 64,
         }
     }
-    model = FeatureContractPipeline(steps=[("gbm", LGBMClassifier())])
+    classifier = LGBMClassifier(n_estimators=1, n_jobs=1, verbosity=-1).fit(
+        np.asarray([[0.0], [1.0]]), np.asarray([0, 1])
+    )
+    model = FeatureContractPipeline(steps=[("gbm", classifier)])
     compatible = Mock()
     monkeypatch.setattr(predict_winner, "resolve_model_artifact_path", lambda _: path)
     monkeypatch.setattr(predict_winner, "read_json", lambda _: metadata)
