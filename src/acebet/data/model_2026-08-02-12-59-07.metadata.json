@@ -129,7 +129,7 @@
     "kind": "elo_baseline",
     "package": {
       "name": "acebet",
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     "serialization": "joblib",
     "sha256": "a51b64ddddc094260ff41aa68beba9662bdb7769076130f55b1ed54a51a703c7",
