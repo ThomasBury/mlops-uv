@@ -5,7 +5,7 @@ hide:
   - toc
 ---
 
-# Start Here
+# Start Here { .brand-title }
 
 AceBet is a compact classical MLOps tutorial. The tennis predictor is only a
 vehicle: it is not a betting product or a claim of production readiness.
