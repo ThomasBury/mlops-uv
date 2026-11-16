@@ -1,0 +1,55 @@
+/* Keep brand colours in theme variables so native components inherit them. */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #0f52ba;
+  --md-primary-fg-color--light: #0f52ba;
+  --md-primary-fg-color--dark: #0f52ba;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+  --md-accent-fg-color: #0f52ba;
+  --md-accent-fg-color--transparent: #0f52ba1a;
+  --md-accent-bg-color: #ffffff;
+  --md-accent-bg-color--light: #ffffffb3;
+  --md-default-bg-color: #faf9f6;
+  --md-default-bg-color--light: #faf9f6b3;
+  --md-default-bg-color--lighter: #faf9f64d;
+  --md-default-bg-color--lightest: #faf9f61f;
+  --md-default-fg-color: #252b35;
+  --md-default-fg-color--light: #525c69;
+  --md-default-fg-color--lighter: #252b3552;
+  --md-default-fg-color--lightest: #252b350d;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #91b8ff;
+  --md-primary-fg-color--light: #91b8ff;
+  --md-primary-fg-color--dark: #91b8ff;
+  --md-primary-bg-color: #181c23;
+  --md-primary-bg-color--light: #181c23b3;
+  --md-accent-fg-color: #91b8ff;
+  --md-accent-fg-color--transparent: #91b8ff1a;
+  --md-accent-bg-color: #181c23;
+  --md-accent-bg-color--light: #181c23b3;
+  --md-default-bg-color: #181c23;
+  --md-default-bg-color--light: #181c238a;
+  --md-default-bg-color--lighter: #181c2342;
+  --md-default-bg-color--lightest: #181c2312;
+  --md-default-fg-color: #e6e8ed;
+  --md-default-fg-color--light: #b2bac7;
+  --md-default-fg-color--lighter: #e6e8ed52;
+  --md-default-fg-color--lightest: #e6e8ed1f;
+}
+
+.md-tabs__item--active {
+  color: var(--md-primary-fg-color);
+  border-bottom-color: var(--md-primary-fg-color);
+}
+
+/* Melon is decorative; it never carries text or interaction states. */
+.md-typeset .brand-title::after {
+  content: "";
+  display: block;
+  width: 3rem;
+  height: 0.2rem;
+  margin-top: 0.6rem;
+  background-color: #f4b6a6;
+}

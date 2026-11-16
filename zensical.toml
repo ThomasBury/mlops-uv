@@ -1,6 +1,7 @@
 [project]
 site_name = "Classical MLOps from Notebook to Production"
 site_url = "https://thomasbury.github.io/mlops-uv/"
+extra_css = ["stylesheets/brand.css"]
 nav = [
   {"Start Here" = "index.md"},
   {"Tutorial" = [
@@ -45,6 +46,29 @@ features = [
   "navigation.indexes",
   "navigation.path",
 ]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+primary = "custom"
+accent = "custom"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+primary = "custom"
+accent = "custom"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+primary = "custom"
+accent = "custom"
 
 [project.markdown_extensions.admonition]
 

@@ -44,13 +44,13 @@ and reason, package version, serialization type, and model checksum.
 The model SHA-256 is
 `a51b64ddddc094260ff41aa68beba9662bdb7769076130f55b1ed54a51a703c7`.
 The metadata SHA-256 is
-`47257375530c0bfeceec7f10244ba5f9ea1829e5af595d062731d4aec7886fdc`.
+`5e18e66678e8bf766b38a13ed8dcbd13d784c0e33ad4cf827a472399a450115a`.
 The model-card SHA-256 is
-`6c0820cd0065480bf76ddbc1dcd26369c4344ac70b8fff7e9b016486c82cde63`.
+`e9b9d1a5db70211604494ca586ab7ff402e94163e54aaf1a33a4819ce9811baf`.
 The prepared dataset SHA-256 is
 `cb27873cafc691f2e0e89a9e44478da240bd6ed3f507cb283b1ea2e720c044d3`.
 
-The package identity is `acebet==0.2.0`. Release preparation updates the bundle
+The package identity is `acebet==0.2.1`. Release preparation updates the bundle
 version metadata and checksums; the estimator bytes, candidate metrics, and
 selected model are unchanged.
 
