@@ -6,13 +6,16 @@ nav = [
   {"Start Here" = "index.md"},
   {"Tutorial" = [
     "tutorial/index.md",
-    {"01 The Prepared-Data Boundary" = "tutorial/01-notebook-to-data-contract.md"},
-    {"02 Model Validity and Selection" = "tutorial/02-feature-contract-training-and-export.md"},
-    {"03 Artifact Reproducibility and Trust" = "tutorial/03-reproducibility-versioning-and-dependencies.md"},
-    {"04 Serving Validated Predictions" = "tutorial/04-serving-async-and-monitoring.md"},
-    {"05 Authentication and Caller Identity" = "tutorial/05-authentication-authorization-and-access-boundaries.md"},
-    {"06 Implemented Observability" = "tutorial/06-observability-logging-metrics-and-traces.md"},
-    {"07 Validation and Release Boundaries" = "tutorial/07-validation-ci-deployment-and-boundaries.md"}
+    {"1. Recreate the working environment" = "tutorial/00-recreate-the-working-environment.md"},
+    {"2. Establish what a prediction needs" = "tutorial/01-notebook-to-data-contract.md"},
+    {"3. Make a training decision reproducible" = "tutorial/02-feature-contract-training-and-export.md"},
+    {"4. Choose the bundle the service may load" = "tutorial/03-reproducibility-versioning-and-dependencies.md"},
+    {"5. Serve one prediction" = "tutorial/04-serving-async-and-monitoring.md"},
+    {"6. Explain a rejected request" = "tutorial/05-authentication-authorization-and-access-boundaries.md"},
+    {"7. Investigate a running service" = "tutorial/06-observability-logging-metrics-and-traces.md"},
+    {"8. Hand the application to another Python user" = "tutorial/08-hand-the-application-to-another-python-user.md"},
+    {"9. Reproduce the service runtime" = "tutorial/09-reproduce-the-service-runtime.md"},
+    {"10. Decide what to verify before release" = "tutorial/07-validation-ci-deployment-and-boundaries.md"}
   ]},
   {"Companion Guides" = [
     "guides/index.md",

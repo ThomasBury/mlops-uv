@@ -39,14 +39,18 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _first_json_example(source: str) -> dict[str, object]:
+    match = re.search(r"```json\n(?P<payload>.*?)\n```", source, flags=re.DOTALL)
+    assert match is not None
+    return json.loads(match.group("payload"))
+
+
 def _canonical_documented_response() -> dict[str, object]:
     reference = (PROJECT_ROOT / "docs" / "api" / "sync-endpoints.md").read_text(
         encoding="utf-8"
     )
     section = reference.split("## Canonical Packaged-Bundle Response", maxsplit=1)[1]
-    match = re.search(r"```json\n(?P<payload>.*?)\n```", section, flags=re.DOTALL)
-    assert match is not None
-    return json.loads(match.group("payload"))
+    return _first_json_example(section)
 
 
 @pytest.mark.api
@@ -71,7 +75,16 @@ def test_documented_canonical_response_matches_real_packaged_bundle(monkeypatch)
                 json=REQUEST_PAYLOAD,
             )
         assert response.status_code == 200
-        assert response.json() == _canonical_documented_response()
+        payload = response.json()
+        assert payload == _canonical_documented_response()
+        introduction = (TUTORIAL_DIR / "index.md").read_text(encoding="utf-8")
+        assert _first_json_example(introduction) == {
+            "p1_win_probability": payload["p1_win_probability"],
+            "model": {"version": payload["model"]["version"]},
+            "feature_freshness": {
+                "p1_as_of_date": payload["feature_freshness"]["p1_as_of_date"],
+            },
+        }
     finally:
         get_demo_users_db.cache_clear()
         get_settings.cache_clear()
@@ -87,8 +100,8 @@ def test_documented_selection_and_bundle_match_committed_records():
     model_chapter = (
         TUTORIAL_DIR / "02-feature-contract-training-and-export.md"
     ).read_text(encoding="utf-8")
-    artifact_chapter = (
-        TUTORIAL_DIR / "03-reproducibility-versioning-and-dependencies.md"
+    artifact_guide = (
+        PROJECT_ROOT / "docs/user-guide/model-artifacts-and-promotion.md"
     ).read_text(encoding="utf-8")
 
     assert metadata["dataset"]["row_counts"] == {
@@ -107,13 +120,10 @@ def test_documented_selection_and_bundle_match_committed_records():
             for metric in ("accuracy", "log_loss", "brier_score", "roc_auc")
         ]
         assert expected in rows
-        guide = (
-            PROJECT_ROOT / "docs/user-guide/model-artifacts-and-promotion.md"
-        ).read_text(encoding="utf-8")
         assert [
             label,
             f"{metadata['candidates'][name]['metrics']['log_loss']:.4f}",
-        ] in _rendered_table_rows(guide)
+        ] in _rendered_table_rows(artifact_guide)
 
     selection = metadata["selection"]
     assert selection["selected_model_kind"] == "elo_baseline"
@@ -140,7 +150,7 @@ def test_documented_selection_and_bundle_match_committed_records():
         promotion["selection_reason"],
     }
     for value in documented_values:
-        assert value in artifact_chapter
+        assert value in artifact_guide
 
 
 def test_notebook_is_clean_non_exporting_and_uses_shared_contracts():

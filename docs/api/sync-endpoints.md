@@ -100,3 +100,27 @@ validated schema-v2 metadata.
 `just root`, `healthz`, `readyz`, `metrics`, `token-json`,
 `users-me`, `predict-testing`, and `predict-production` target a running
 API. `just manual` starts a temporary API and runs the authenticated flow.
+
+## Operational signals
+
+`/healthz` reports that the process can respond. `/readyz` reports that the
+model and player state required by the current configuration loaded at
+startup. Each response echoes `X-Request-ID`, which ties it to the service
+log entry for the same request.
+
+AceBet adds these metric families to the Prometheus output at `/metrics`.
+
+- `acebet_http_requests_total` counts HTTP requests by method, route, and status.
+- `acebet_http_request_duration_seconds` tracks latency by method and route.
+- `acebet_prediction_requests_total` counts scored and failed prediction attempts by mode.
+- `acebet_prediction_duration_seconds` tracks prediction latency by mode.
+- `acebet_prediction_failures_total` counts prediction failures by mode and error type.
+- `acebet_predicting_with_sample_data_total` counts successful sample predictions.
+
+HTTP metrics exclude `/metrics`. Unmatched paths use `__unmatched__` and
+nonstandard methods use `OTHER`, keeping the number of label values bounded.
+
+For a local trace, install the optional `tracing` extra and set
+`ACEBET_TRACING_ENABLED=true`. `ACEBET_TRACE_EXPORTER` selects `console` or
+`otlp`. The latter sends request and prediction spans to an OpenTelemetry
+endpoint. See `.env.example` for the connection settings.

@@ -12,15 +12,13 @@ vehicle: it is not a betting product or a claim of production readiness.
 
 ## The Mental Model
 
-Follow one chain: **prepared data** → **features** → **time-aware comparison**
-→ **selected model bundle** → **validated API** → **operational checks**.
+Start with prepared data, build features, compare models over time, select a
+model bundle, serve it through a validated API, and run operational checks.
 Each step makes one decision inspectable before the next one depends on it.
-The tutorial shows how an ML engineering project protects its data, decisions,
-artifacts, and operations—not how to ship a betting system.
 
 ## Choose A Path
 
-- [Tutorial](./tutorial/index.md): the sequential seven chapters.
+- [Tutorial](./tutorial/index.md): ten lessons from training to diagnosing a running prediction service.
 - [Getting Started](./getting-started.md): clean-clone setup and local commands.
 - [Companion Guides](./guides/index.md): training, artifacts, and tooling.
 - [Reference](./reference/index.md): exact API, CI, and Docker behavior.

@@ -1,113 +1,73 @@
 ---
-title: Tutorial 6 - Implemented Observability
-description: Inspect request IDs, bounded metrics, optional tracing, and minimal liveness and readiness behavior.
+title: Investigate a running service
+description: Connect one request to its log, counter, input freshness, and the later evidence needed to score the forecast.
 ---
 
-# Tutorial 6: Implemented Observability
+# 7. Investigate a running service { #tutorial-6-implemented-observability }
 
-AceBet implements a small in-process observability surface. This chapter covers
-only those signals; it does not imply a centralized operations platform.
+<a id="why-this-exists"></a>
+<a id="exercise-the-surface"></a>
 
-## Why This Exists
+Imagine a colleague says the last prediction looked wrong. Collect the
+evidence for one new request in terminal B while the local service in
+terminal A is idle. Keep the same process running throughout because its
+counter is stored in memory.
 
-**Observability** is the evidence needed to understand a running service. The
-commands below prove requests can be correlated, counted, and checked for
-readiness without claiming a centralized operations platform.
+## Find this request in the logs and the counter { #experiment-count-one-production-prediction }
 
-## Exercise The Surface
-
-With the API running:
-
-```bash
-just healthz
-just readyz
-just metrics
-just predict-production
-```
-
-## Request Correlation And Logs
-
-Middleware preserves an incoming `X-Request-ID` or creates one, echoes it on
-the response, and binds it into structured request logs. Logs include method,
-path, status, and duration. Request bodies are not logged by default. Context is
-cleared in a `finally` path so one request cannot leak into the next.
-
-## Bounded Metrics
-
-`/metrics` exposes Prometheus text for HTTP counts and duration, prediction
-counts and duration, prediction failures, and successful sample-data use.
-Known endpoints use route templates as labels. Unknown URLs collapse to the
-fixed `__unmatched__` label, and `/metrics` excludes itself from generic HTTP
-metrics. This prevents arbitrary request paths from producing unbounded label
-values. The nine standard HTTP methods keep their names; every other method
-uses `OTHER` in both counters and histograms.
-
-## Optional Tracing
-
-Tracing is disabled unless the `tracing` extra and
-`ACEBET_TRACING_ENABLED=true` are supplied. FastAPI request spans and a
-prediction span can be exported to the console or OTLP. Shutdown un-instruments
-the app, flushes and shuts down the app-owned provider, and clears tracing
-state. FastAPI's native telemetry is explicitly disabled, including automatic
-exporter configuration, so it cannot create a second telemetry lifecycle.
-
-## Health And Readiness
-
-`/healthz` returns `{"status":"ok"}` when the process can respond.
-`/readyz` returns ready only when the runtime assets required for the current
-environment were loaded during lifespan startup. These checks are local and
-in-process; they do not probe an external registry, data store, collector, or
-downstream dependency.
-
-There are no bundled dashboards, alerts, log shipping, retention rules, SLOs,
-or centralized trace backend. See the single
-[Tutorial Boundaries](../tutorial-shortcuts-vs-production.md) matrix.
-
-!!! info "Shortcut"
-
-    **Why it is enough here:** local logs, bounded metrics, and optional traces
-    make one process inspectable. **Add it when…** operations need retention,
-    alerts, SLOs, or shared dashboards; then add managed backends. See
-    [Tutorial Boundaries](../tutorial-shortcuts-vs-production.md).
-
-## Experiment: Count One Production Prediction
-
-**Prerequisites:** run `uv sync --locked` and keep one otherwise idle local API
-running on `127.0.0.1:8000`. Use the repository root, default packaged assets,
-and configured demo credentials. Do not restart the API or send other
-predictions during the experiment.
-**Prediction:** scraping before and after one successful production prediction
-shows a counter increase of exactly one.
+<a id="request-correlation-and-logs"></a>
+<a id="bounded-metrics"></a>
 
 ```bash
-uv run python - <<'PYCODE'
-import subprocess
-from urllib.request import urlopen
-
-
-def prediction_count():
-    with urlopen("http://127.0.0.1:8000/metrics") as response:
-        metrics = response.read().decode()
-    prefix = 'acebet_prediction_requests_total{mode="production"} '
-    return next((float(line[len(prefix):]) for line in metrics.splitlines()
-                 if line.startswith(prefix)), 0.0)
-
-
-before = prediction_count()
-subprocess.run(["just", "--quiet", "predict-production"], check=True)
-after = prediction_count()
-print(f"Prediction counter change: {after - before:.0f}")
-assert after == before + 1
-PYCODE
+curl -fsS "$api/metrics" | grep '^acebet_prediction_requests_total{mode="production"} '
+token="$(just --quiet token)"
+printf 'Authorization: Bearer %s\n' "$token" |
+  curl -fsS "$api/predict/production" \
+    -H @- \
+    -H 'X-Request-ID: tutorial-freshness' \
+    -H 'Content-Type: application/json' \
+    --data-binary @var/tutorial/request.json \
+    -D var/tutorial/observed-headers.txt \
+    -o var/tutorial/observed-response.json
+unset token
+curl -fsS "$api/metrics" | grep '^acebet_prediction_requests_total{mode="production"} '
 ```
 
-Expected checkpoint: the canonical successful prediction JSON, then
-`Prediction counter change: 1`. The starting count depends on previous requests.
+The counter should rise by one. To find the outcome of this particular
+request, look for `X-Request-ID` in the saved headers and find the same ID
+in terminal A's `http_request_completed` log. The status on that line tells
+you how the API responded. The counter also includes failed scoring attempts.
 
-**Explain:** why is the difference useful even when the initial count varies?
-Why must the API stay running, and why must other predictions be excluded?
-**Cleanup:** no files change; the in-process counter resets when you stop the API
-with Ctrl-C.
+## Decide what the response can tell you
 
-Continue with
-[Validation And Release Boundaries](./07-validation-ci-deployment-and-boundaries.md).
+Open `var/tutorial/observed-response.json`. Was the player information
+current for the requested match? Did the forecast turn out well?
+
+**Hint:** compare the dates under `feature_freshness` with the requested
+match date. Think about what had to happen after a real forecast before you
+could score it.
+
+??? note "Check your explanation"
+
+    In this replay, both snapshots are dated March 4, 2018, and their ages
+    are zero days. They match the requested calendar date. The date alone
+    gives no evidence that the information was available before the match.
+
+    For one forecast, a later match result tells you the winner and lets
+    you score the probability assigned to that outcome. To assess quality
+    across cases, record predictions before matches with a match identifier,
+    model version, and probability. Join them to the later outcomes and
+    compute log loss over those matches, ideally alongside a baseline.
+
+<a id="health-and-readiness"></a>
+<a id="optional-tracing"></a>
+
+See [Operational signals](../api/sync-endpoints.md#operational-signals) for
+health and readiness, the full metrics list, and optional tracing.
+
+**Finish when** you can point to the log status that shows the request
+succeeded, the fields that date the inputs, and the later evidence you
+would need to judge forecast quality. Stop the local server with **Ctrl-C
+in terminal A**. Keep `request.json`, `local-response.json`, the model
+bundle, and the snapshots for lessons 9 and 10. Continue with
+[lesson 8](./08-hand-the-application-to-another-python-user.md).
