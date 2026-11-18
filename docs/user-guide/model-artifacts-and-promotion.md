@@ -64,8 +64,8 @@ SHA-256 values recorded for the packaged example.
 | File | SHA-256 |
 | --- | --- |
 | `model_2026-08-02-12-59-07.joblib` | `a51b64ddddc094260ff41aa68beba9662bdb7769076130f55b1ed54a51a703c7` |
-| `model_2026-08-02-12-59-07.metadata.json` | `5e18e66678e8bf766b38a13ed8dcbd13d784c0e33ad4cf827a472399a450115a` |
-| `model_2026-08-02-12-59-07.modelcard.md` | `e9b9d1a5db70211604494ca586ab7ff402e94163e54aaf1a33a4819ce9811baf` |
+| `model_2026-08-02-12-59-07.metadata.json` | `62cd4743f050eae1acc0b156307ce16b43f5b1b4d0e23cc7f20825120884afd0` |
+| `model_2026-08-02-12-59-07.modelcard.md` | `a1b42707746c9c21ea2394b784c165fa2ecccc2c433328c534e34b161b2f0c43` |
 | `data/atp_data_production.feather` | `cb27873cafc691f2e0e89a9e44478da240bd6ed3f507cb283b1ea2e720c044d3` |
 
 ## Promotion
