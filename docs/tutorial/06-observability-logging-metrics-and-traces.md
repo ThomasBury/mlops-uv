@@ -21,13 +21,14 @@ counter is stored in memory.
 ```bash
 curl -fsS "$api/metrics" | grep '^acebet_prediction_requests_total{mode="production"} '
 token="$(just --quiet token)"
-curl -fsS "$api/predict/production" \
-  -H "Authorization: Bearer $token" \
-  -H 'X-Request-ID: tutorial-freshness' \
-  -H 'Content-Type: application/json' \
-  --data-binary @var/tutorial/request.json \
-  -D var/tutorial/observed-headers.txt \
-  -o var/tutorial/observed-response.json
+printf 'Authorization: Bearer %s\n' "$token" |
+  curl -fsS "$api/predict/production" \
+    -H @- \
+    -H 'X-Request-ID: tutorial-freshness' \
+    -H 'Content-Type: application/json' \
+    --data-binary @var/tutorial/request.json \
+    -D var/tutorial/observed-headers.txt \
+    -o var/tutorial/observed-response.json
 unset token
 curl -fsS "$api/metrics" | grep '^acebet_prediction_requests_total{mode="production"} '
 ```

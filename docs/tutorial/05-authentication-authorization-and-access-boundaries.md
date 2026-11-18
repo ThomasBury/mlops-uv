@@ -28,12 +28,13 @@ send the returned token.
 
 ```bash
 token="$(just --quiet token)"
-sed 's/Fognini F[.]/Tutorial Unknown Player/' var/tutorial/request.json |
+request="$(sed 's/Fognini F[.]/Tutorial Unknown Player/' var/tutorial/request.json)"
+printf 'Authorization: Bearer %s\n' "$token" |
   curl -sS -w '\nHTTP %{http_code}\n' "$api/predict/production" \
-    -H "Authorization: Bearer $token" \
+    -H @- \
     -H 'Content-Type: application/json' \
-    --data-binary @-
-unset token
+    --data-binary "$request"
+unset token request
 ```
 
 Expect `422` with `detail.code` set to `unknown_players`. Authentication

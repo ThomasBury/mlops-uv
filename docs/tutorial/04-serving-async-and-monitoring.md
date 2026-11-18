@@ -45,23 +45,35 @@ cat > var/tutorial/request.json <<'JSON'
 JSON
 
 api=http://127.0.0.1:8000
-token="$(just --quiet token)"
-curl -fsS "$api/predict/production" \
-  -H "Authorization: Bearer $token" \
-  -H 'Content-Type: application/json' \
-  --data-binary @var/tutorial/request.json \
-  -o var/tutorial/local-response.json
-unset token
-cat var/tutorial/local-response.json
+(
+  set -e
+  response=var/tutorial/local-response.json
+  rm -f "$response"
+  pending="$(mktemp "$response.XXXXXX")"
+  trap 'rm -f "$pending"' EXIT
+  token="$(just --quiet token)"
+  printf 'Authorization: Bearer %s\n' "$token" |
+    curl -fsS "$api/predict/production" \
+      -H @- \
+      -H 'Content-Type: application/json' \
+      --data-binary @var/tutorial/request.json \
+      -o "$pending"
+  mv "$pending" "$response"
+  cat "$response"
+)
 ```
 
 The `token` recipe logs in with the demo credentials from `.env`. The
-returned **bearer token** is a temporary credential. Send it in the
-`Authorization` header to use the protected endpoint. The JSON body carries
+returned **bearer token** is a temporary credential. `-H @-` reads the
+`Authorization` header from the pipe, keeping the token out of curl's
+command-line arguments. The JSON body carries
 the match details. HTTP is the protocol carrying the request and response,
 and the `Content-Type` header tells the API how to read the body.
 The `/predict/production` path selects the main model and player data even
 when you run the app locally.
+
+A new response is saved only after curl succeeds. If login or the request
+fails, fix the reported error and rerun the block.
 
 ## Verify which model answered
 

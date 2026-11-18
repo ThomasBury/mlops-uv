@@ -37,15 +37,22 @@ In terminal B, wait for `just readyz` to return `{"status":"ready"}`. Then
 repeat the saved request with a token issued by this instance.
 
 ```bash
-token="$(just --quiet token)"
-curl -fsS "$api/predict/production" \
-  -H "Authorization: Bearer $token" \
-  -H 'Content-Type: application/json' \
-  --data-binary @var/tutorial/request.json \
-  -o var/tutorial/container-response.json
-unset token
+(
+  set -e
+  response=var/tutorial/container-response.json
+  rm -f "$response"
+  pending="$(mktemp "$response.XXXXXX")"
+  trap 'rm -f "$pending"' EXIT
+  token="$(just --quiet token)"
+  printf 'Authorization: Bearer %s\n' "$token" |
+    curl -fsS "$api/predict/production" \
+      -H @- \
+      -H 'Content-Type: application/json' \
+      --data-binary @var/tutorial/request.json \
+      -o "$pending"
+  mv "$pending" "$response"
 
-uv run python - <<'PY'
+  uv run python - <<'PY'
 import json
 from pathlib import Path
 
@@ -55,7 +62,10 @@ container = json.loads((root / "container-response.json").read_text())
 assert container["model"] == local["model"]
 print("Both processes served:", container["model"]["version"])
 PY
+)
 ```
+
+If login or the request fails, fix the reported error and rerun the block.
 
 **Finish when** you can show that the version and checksum agree and explain
 how the mounted bundle reached the container. Keep the container running in
