@@ -1,34 +1,55 @@
-# Classical MLOps With UV
+# AceBet — Classical MLOps with uv
 
-Tutorial site: <https://thomasbury.github.io/mlops-uv/>
+AceBet is a hands-on tutorial for Python users learning to train a tennis match
+predictor and serve it through a local API.
 
-[![Tests](https://github.com/ThomasBury/mlops-uv/actions/workflows/main.yaml/badge.svg)](https://github.com/ThomasBury/mlops-uv/actions/workflows/main.yaml)
-[![Documentation](https://github.com/ThomasBury/mlops-uv/actions/workflows/docs.yaml/badge.svg)](https://github.com/ThomasBury/mlops-uv/actions/workflows/docs.yaml)
-[![Python 3.10-3.12](https://img.shields.io/badge/python-3.10--3.12-blue.svg)](https://www.python.org/downloads/)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
+**[Read the tutorial](https://github.com/ThomasBury/mlops-uv/blob/main/docs/tutorial/index.md)**
 
-`acebet` is a compact MLOps tutorial for a tabular tennis match predictor. The
-repo covers prepared-data validation, feature assembly, model training, FastAPI
-serving, tests, Docker packaging, and optional MLflow tracking without adding
-infrastructure that the code does not implement.
-
-The canonical documentation source lives in `docs/` and is built by Zensical
-using `zensical.toml`. For the full walkthrough, start with
-[`docs/index.md`](docs/index.md).
+![](docs/images/acebet-mark.svg)
 
 ## Quickstart
 
+Install Git, Python 3.12, `uv`, `just`, and `curl`. Run these commands in a
+Unix-style shell.
+
 ```bash
-uv sync --locked
-cp .env.example .env
+git clone https://github.com/ThomasBury/mlops-uv.git
+cd mlops-uv
+uv sync --locked --python 3.12
+[ -f .env ] || cp .env.example .env
 just serve
 ```
 
-Then open `http://127.0.0.1:8000/docs` for OpenAPI.
+Leave the server running. In a second terminal, from the `mlops-uv` directory,
+run the built-in example. It signs in with the demo credentials and requests
+a prediction for Fognini against Jarry.
 
-To preview the authored docs site separately, run `just docs-serve` and open
-`http://127.0.0.1:8002`.
+```bash
+just predict-production
+```
 
-## GitHub Star History
+**Response excerpt**
 
-[![Star History Chart](https://api.star-history.com/svg?repos=ThomasBury/mlops-uv&type=Date)](https://star-history.com/#ThomasBury/mlops-uv&Date)
+```json
+{
+  "predicted_winner": "Fognini F.",
+  "p1_win_probability": 0.768387902579221,
+  "model": {"kind": "elo_baseline"}
+}
+```
+
+`p1_win_probability` is the model’s estimate that Fognini, the first player in
+the request, wins. `model.kind` tells you the Elo baseline answered. To verify
+the exact saved model, compare `model.sha256` in the full response with
+`model_sha256` in the [committed promotion record](src/acebet/data/promoted_model.json).
+
+While the server is running, open the [local API reference at `/docs`](http://127.0.0.1:8000/docs).
+For more options, see the [full setup guide](https://github.com/ThomasBury/mlops-uv/blob/main/docs/getting-started.md).
+
+## What you’ll learn
+
+- Compare candidate models on matches played after the training period.
+- Verify which saved model answered a request by matching its checksum to the promotion record.
+- Investigate a failed request using its request ID in the logs and the service’s metrics.
+
+[Apache 2.0 License](LICENSE)
