@@ -102,9 +102,9 @@ both the immutable packaged fallback and an explicit read-only mounted override.
 The image is a single long-running inference service. Training, documentation,
 promotion, and local MLflow logging are finite commands, so Compose would not
 orchestrate anything useful today. A future containerized trainer should be a
-separate build target or image. Introduce Compose when the local runtime truly
-needs multiple long-running containers—for example an external MLflow server,
-database, collector, or dashboard—with each dependency represented by its own
+separate build target or image. Introduce Compose when the local runtime
+needs multiple long-running containers, such as an external MLflow server,
+database, collector, or dashboard, with each dependency represented by its own
 service.
 
 The separate docs workflow deploys GitHub Pages. Centralized observability,

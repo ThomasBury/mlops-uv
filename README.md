@@ -10,7 +10,7 @@ Tutorial site: <https://thomasbury.github.io/mlops-uv/>
 `acebet` is a compact MLOps tutorial for a tabular tennis match predictor. The
 repo covers prepared-data validation, feature assembly, model training, FastAPI
 serving, tests, Docker packaging, and optional MLflow tracking without adding
-infrastructure that the code does not actually implement.
+infrastructure that the code does not implement.
 
 The canonical documentation source lives in `docs/` and is built by Zensical
 using `zensical.toml`. For the full walkthrough, start with
