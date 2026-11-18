@@ -55,6 +55,19 @@ The metadata records:
 The model card presents the same candidate comparison and identity for human
 review, including the integrity warning below.
 
+## Canonical packaged bundle
+
+The packaged promotion record selects `elo_baseline` with reason
+`elo_preferred_challenger_margin_not_met`. These are the filenames and full
+SHA-256 values recorded for the packaged example.
+
+| File | SHA-256 |
+| --- | --- |
+| `model_2026-08-02-12-59-07.joblib` | `a51b64ddddc094260ff41aa68beba9662bdb7769076130f55b1ed54a51a703c7` |
+| `model_2026-08-02-12-59-07.metadata.json` | `5e18e66678e8bf766b38a13ed8dcbd13d784c0e33ad4cf827a472399a450115a` |
+| `model_2026-08-02-12-59-07.modelcard.md` | `e9b9d1a5db70211604494ca586ab7ff402e94163e54aaf1a33a4819ce9811baf` |
+| `data/atp_data_production.feather` | `cb27873cafc691f2e0e89a9e44478da240bd6ed3f507cb283b1ea2e720c044d3` |
+
 ## Promotion
 
 ```bash title="Export and promote a local bundle"

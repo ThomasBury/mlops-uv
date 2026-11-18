@@ -5,15 +5,18 @@ description: Install the locked environment, run the API, and use the non-mutati
 
 # Getting Started
 
+Use this guide to try the packaged model or run maintainer checks. To train
+and serve your own bundle, start with the [ten-lesson tutorial](./tutorial/index.md).
+
 Install Python `>=3.10,<3.13`, `uv`, `just`, and Git. Docker is optional
 unless you want to run the container smoke.
 
 ## What You Are Proving
 
-This is the shortest route through the tutorial's chain: install the locked
-environment, validate the committed inputs and model decision, then run the
-same validated bundle behind a local API. It proves this repository agrees
-with itself; it does not create a new model or claim a production deployment.
+Install the locked environment, validate the committed inputs and model
+decision, then run the same bundle behind a local API. These checks establish
+agreement within the repository; they do not create a new model or establish
+production readiness.
 
 ## Clean-Clone Setup
 
@@ -29,7 +32,7 @@ investigate the reported Python, platform, cache, network, or lock mismatch.
 Run `uv lock` only when dependency declarations intentionally change, then
 review and commit the resulting lock diff.
 
-**Design choice:** dependencies are locked so the checks use the reviewed
+Dependencies are locked so the checks use the reviewed
 environment. See [Developer Workflow](./uv/uv-workflows-for-mlops.md) when you
 need the `uv` and `just` details.
 
@@ -64,9 +67,8 @@ require a daemon.
 
 !!! info "Shortcut"
 
-    **Why it is enough here:** the local API is the only long-running service.
-    **Add it when…** MLflow, a database, or telemetry backends must run
-    together locally; then Compose becomes useful.
+    The local API is the only long-running service. Compose becomes useful
+    when MLflow, a database, or telemetry backends must run together locally.
 
 ## Safe Raw And Notebook Exercises
 

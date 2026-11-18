@@ -1,111 +1,62 @@
 ---
-title: Tutorial 7 - Validation And Release Boundaries
-description: Run the non-mutating review gate, understand Docker smoke coverage, and keep tutorial claims aligned with executable contracts.
+title: Decide what to verify before release
+description: Diagnose a possible model mix-up and connect your investigation to the repository's release checks.
 ---
 
-# Tutorial 7: Validation And Release Boundaries
+# 10. Decide what to verify before release { #tutorial-7-validation-and-release-boundaries }
 
-The final step is to prove that data checks, model selection, artifacts,
-serving, packaging, notebook code, and documentation still agree.
+<a id="why-this-exists"></a>
 
-## Why This Exists
+Your colleague says the container is ready and returns a plausible
+prediction, but suspects it loaded the packaged default. Decide what
+evidence would settle the question, then check it against the running
+container or the response you saved in lesson 9.
 
-Validation is the final operational check: it asks whether data, decisions,
-artifacts, API behavior, and documentation still agree. The smallest command
-below proves that agreement without changing tracked files.
+Write a short reply to your colleague. Include the observation that settles
+the question, the configuration you would inspect if the suspicion were
+correct, and what a passing readiness check establishes. If Docker is
+unavailable, use your local prediction, the documented packaged response,
+and the container command from lesson 9 to explain how you would check.
 
-## Run The Repository Gate
+??? note "Check your diagnosis after choosing a check"
 
-```bash
-just review
-```
+    Compare the prediction's model version and full checksum with the values
+    in your promotion record. The version is the promoted model filename
+    without its extension. Compare against the packaged default's identity
+    if the values differ. A plausible probability or a matching model kind
+    can come from either bundle.
 
-`review` is non-mutating and independent of a Docker daemon. It runs:
+    If the container returned the packaged identity, inspect whether
+    `ACEBET_MODEL_DIR` points to the mounted directory and whether the mount
+    source contains the intended `promoted_model.json`. With the setting
+    unset, the app uses its packaged default. A configured directory with
+    missing required files fails startup. `/readyz` says the service loaded
+    the assets required by its current configuration. Either valid bundle can
+    satisfy that check.
 
-- prepared-data validation, a temporary raw-sample rebuild, and temporary
-  player-state generation;
-- constant/Elo/LightGBM training and selection without export;
-- all tests, including wheel/sdist content and isolated-install tests, with
-  branch coverage;
-- the 80% overall coverage floor and 100% critical-module floor;
-- Ruff lint and format checks plus `ty`;
-- `jupyter execute` without `--inplace`;
-- the Zensical docs build;
-- a temporary authenticated API smoke using the real packaged bundle.
+## Connect your diagnosis to automated checks { #what-contract-tests-prevent }
 
-The notebook runs with a non-interactive Matplotlib backend. A cell error fails
-the command, while the committed notebook retains null execution counts and no
-outputs.
+<a id="run-the-repository-gate"></a>
+<a id="docker-is-a-separate-runtime-proof"></a>
+<a id="experiment-override-the-published-port"></a>
 
-## Docker Is A Separate Runtime Proof
+Maintainers run `just review` for data checks, candidate comparison, tests
+with coverage, distribution installs, code checks, the notebook, docs, and
+an authenticated local API smoke test. The tutorial contracts compare the
+documented default response and selection evidence with the real packaged
+bundle. These checks would catch a change in the documented default.
 
-```bash
-just docker-smoke
-```
+`just docker-smoke` builds the image and exercises readiness, authentication,
+and prediction with packaged assets and with read-only mounts. Your
+diagnosis checks which specific export answered on this invocation. CI,
+short for continuous integration, repeats the Python checks and runs the
+container smoke in a separate job. The docs job builds and publishes the
+tutorial site from the main branch. See the
+[CI/CD reference](../cicd/github-actions-pipeline.md) and
+[Docker reference](../deployment/docker-and-github-actions.md)
+for the full checks and port configuration.
 
-Docker is optional for tutorial readers and is intentionally excluded from
-`review`. `docker-build` only builds the image. `docker-smoke` builds it and
-proves that only the non-editable virtual environment enters the runtime, the
-process is non-root, health and readiness pass, token authentication works,
-caller identity resolves, and production prediction works with both packaged
-fallback and explicit read-only mounted assets.
-
-This remains a single-service image. Multi-stage builds construct an image;
-Compose coordinates multiple running containers. Training, documentation,
-promotion, and local MLflow logging are commands, not services, so adding
-Compose would not improve this tutorial. If a trainer is containerized later,
-give it a separate build target or image. Add Compose only when external MLflow,
-a database, collectors, dashboards, or similar long-running dependencies must
-run together locally.
-
-!!! info "Shortcut"
-
-    **Why it is enough here:** one image proves the API can run with its
-    packaged bundle. **Add it when…** local MLflow, a database, collectors, or
-    dashboards must run together; then add Compose. See
-    [Tutorial Boundaries](../tutorial-shortcuts-vs-production.md).
-
-## What Contract Tests Prevent
-
-Tutorial regressions compare the canonical documented response with a real
-packaged-bundle response. They also bind documented metrics, filenames, hashes,
-selected kind, and reason to the committed metadata and promotion pointer.
-They reject obsolete recipes, unsafe canonical-data output examples, stale lock
-flags, and inaccurate Docker claims.
-
-CI repeats the Python checks across 3.10–3.12, combines unit and integration
-coverage on 3.12, runs notebook execution, verifies tracked files remain
-unchanged, and keeps Docker smoke in its own job. The docs workflow explicitly
-runs `uv sync --locked --dev` before building. Pull-request docs builds have
-read-only permissions; only the main-branch deployment job receives Pages and
-OIDC write permissions.
-
-This is an executable tutorial release boundary, not automated application
-deployment. The single
-[Tutorial Boundaries](../tutorial-shortcuts-vs-production.md) matrix states
-what remains outside the repository, including centralized observability,
-registry infrastructure, orchestration, scanning/signing, and automated
-application deployment.
-
-## Experiment: Override The Published Port
-
-**Prerequisites:** install `just` and work from the repository root. Neither a
-Docker daemon nor `.env` is needed for this dry run.
-**Prediction:** the override changes the host port while publication remains
-restricted to `127.0.0.1`.
-
-```bash
-ACEBET_DOCKER_PORT=18080 just --dry-run docker-run
-```
-
-Expected checkpoint: among the printed commands is:
-
-```text
-docker run --rm --env-file .env -p "127.0.0.1:18080:8000" "acebet"
-```
-
-**Explain:** why does the host bind address matter even though the container
-listens on `0.0.0.0`? What can this dry run establish, and what still requires
-`just docker-smoke` against a running daemon?
-**Cleanup:** the override applies to this command only; no container starts and
-no files change.
+**Finish when** your reply names the evidence you used, the model that
+answered, and where you would look for a configuration error. Then stop the
+container with **Ctrl-C in terminal A**. The files under `var/tutorial/`
+are yours to keep or discard.

@@ -1,105 +1,108 @@
 ---
-title: Tutorial 4 - Serving Validated Predictions
-description: Follow the implemented synchronous prediction path, validated model identity, exact probabilities, and snapshot freshness.
+title: Serve one prediction
+description: Send an authenticated request to your local bundle and verify the model identity in the response.
 ---
 
-# Tutorial 4: Serving Validated Predictions
+# 5. Serve one prediction { #tutorial-4-serving-validated-predictions }
 
-The serving contract is deliberately narrow: validate runtime assets at
-startup, build one feature row from two snapshots and explicit match context,
-score the selected model, and return the exact evidence a caller needs.
+<a id="why-this-exists"></a>
 
-## Why This Exists
+You have a promotion record and a table of player snapshots. Start the
+application with both and verify that your model answers.
 
-**Serving** turns a selected bundle into a request-time prediction. The small
-end-to-end command proves the API loads validated assets, authenticates a
-caller, and returns the evidence needed to interpret one prediction.
+## Start the local API { #run-the-temporary-end-to-end-flow }
 
-## Run The Temporary End-To-End Flow
+Run these commands from the repository root in **terminal A**.
 
 ```bash
 [ -f .env ] || cp .env.example .env
-just manual
+just serve-with-assets var/tutorial/models var/tutorial/data
 ```
 
-The first command preserves any existing `.env` and creates the local tutorial
-auth configuration only when it is missing.
+The recipe hands both directories to the application as settings.
+At **startup**, before accepting requests, the app resolves the promotion
+record, verifies and loads the model, then reads and validates the player
+table. A configured directory must contain its required assets. Leave
+terminal A running through lesson 7.
 
-The recipe starts `fastapi run` on a free local port, waits for readiness,
-obtains a token, exercises both prediction modes, and removes the temporary
-process. It does not regenerate data or model artifacts.
+## Send a request { #implemented-prediction-path }
 
-## Implemented Prediction Path
-
-For either prediction route the API:
-
-1. uses the mode-specific startup-loaded model and player-state table;
-2. resolves both snapshots and calculates their calendar-day ages;
-3. builds exactly the shared 17-column feature contract;
-4. scores the validated promoted estimator;
-5. returns class, winner, exact player-1 probability, mode, model identity, and
-   freshness.
-
-Class `1` means player 1 wins; class `0` means player 2 wins. The response
-does not round or convert the player-1 probability. For the canonical request,
-the packaged Elo bundle returns `0.768387902579221`.
-
-Model identity is not inferred from a directory name. It comes from the same
-validated schema-v2 metadata as the loaded estimator and includes kind,
-version, and the complete model SHA-256.
-
-Snapshot dates and ages disclose how old each player's rank and Elo state was
-at the requested match date. Unknown players and snapshots newer than the match
-date produce structured `422` responses. Missing runtime assets produce
-`503`.
-
-## Why Prediction Handlers Are Synchronous
-
-Pandas feature assembly, joblib-backed model work, and password hashing are
-blocking operations. Prediction routes and their blocking dependencies are
-regular `def` functions so FastAPI runs them in its worker threadpool.
-Application lifespan and request middleware remain asynchronous where they
-coordinate startup, shutdown, and request flow.
-
-The service does not implement a task queue, asynchronous model server, batch
-endpoint, GPU scheduler, or autoscaling policy. Those boundaries are summarized
-once in [Tutorial Boundaries](../tutorial-shortcuts-vs-production.md).
-
-!!! info "Shortcut"
-
-    **Why it is enough here:** one synchronous API keeps blocking model work
-    correct and visible. **Add it when…** throughput, batch work, GPUs, or
-    independent scaling require a queue or model service. See
-    [Tutorial Boundaries](../tutorial-shortcuts-vs-production.md).
-
-## Experiment: Request An Unknown Player
-
-**Prerequisites:** complete Getting Started and keep `just serve` running on
-`127.0.0.1:8000` in another terminal. Run these commands from the repository root.
-**Prediction:** valid authentication cannot supply missing player state; the
-request returns `422` with `unknown_players`.
+In **terminal B**, from the same repository root, save the match details
+as JSON, a text format for named fields and values.
 
 ```bash
+cat > var/tutorial/request.json <<'JSON'
+{
+  "p1_name": "Fognini F.",
+  "p2_name": "Jarry N.",
+  "date": "2018-03-04",
+  "series": "ATP250",
+  "court": "Outdoor",
+  "surface": "Hard",
+  "round": "1st Round",
+  "best_of": 3
+}
+JSON
+
+api=http://127.0.0.1:8000
 token="$(just --quiet token)"
-curl -sS -w '\nHTTP %{http_code}\n' \
-  http://127.0.0.1:8000/predict/production \
-  -H "Authorization: Bearer ${token}" \
+curl -fsS "$api/predict/production" \
+  -H "Authorization: Bearer $token" \
   -H 'Content-Type: application/json' \
-  -d '{"p1_name":"Tutorial Unknown Player","p2_name":"Jarry N.","date":"2018-03-04","series":"ATP250","court":"Outdoor","surface":"Hard","round":"1st Round","best_of":3}'
+  --data-binary @var/tutorial/request.json \
+  -o var/tutorial/local-response.json
 unset token
+cat var/tutorial/local-response.json
 ```
 
-Expected output (the error body remains visible):
+The `token` recipe logs in with the demo credentials from `.env`. The
+returned **bearer token** is a temporary credential. Send it in the
+`Authorization` header to use the protected endpoint. The JSON body carries
+the match details. HTTP is the protocol carrying the request and response,
+and the `Content-Type` header tells the API how to read the body.
+The `/predict/production` path selects the main model and player data even
+when you run the app locally.
 
-```text
-{"detail":{"code":"unknown_players","message":"Player snapshots are unavailable for one or more requested players.","context":{"players":["Tutorial Unknown Player"]}}}
-HTTP 422
+## Verify which model answered
+
+Read `p1_win_probability` as the model's estimate for Fognini, the first player
+in this request. Then compare the response's `model.version` to the promoted
+filename without `.joblib`, and `model.sha256` to the full `model_sha256`
+in the promotion record.
+
+```bash
+uv run python - <<'PY'
+import json
+from pathlib import Path
+
+root = Path("var/tutorial")
+served = json.loads((root / "local-response.json").read_text())["model"]
+promoted = json.loads((root / "models/promoted_model.json").read_text())
+assert served["version"] == Path(promoted["model_filename"]).stem
+assert served["sha256"] == promoted["model_sha256"]
+print("Served the promoted bundle:", served["version"])
+PY
 ```
 
-**Explain:** why does this fail at snapshot resolution rather than estimator
-scoring? What evidence would adding this player require?
-**Cleanup:** the token variable is unset; no files change. Keep the API running
-for the next chapters, then stop it with Ctrl-C.
+## Follow the scoring call { #why-prediction-handlers-are-synchronous }
 
-Continue with
-[Authentication And Caller Identity](./05-authentication-authorization-and-access-boundaries.md).
+FastAPI checks the submitted fields and supplies the signed-in user and
+startup-loaded assets to the handler, the function for this endpoint. In
+`src/acebet/app/routers/prediction.py`, follow `predict_match_outcome_production`
+to `_predict_match_outcome`. It looks up the two snapshots and calls
+`make_online_prediction` to assemble the model input and score it.
+The response includes the identity of the loaded model.
+
+The handler uses regular `def`. FastAPI runs it on a **worker thread**,
+where blocking work such as assembling and scoring a pandas row can finish
+while the **event loop** continues coordinating requests. The scoring
+function runs inside that handler. If response times become a concern,
+measure them first. Batch jobs or sustained heavy scoring may justify a
+separate worker or model service. [FastAPI's explanation of threads and async](https://fastapi.tiangolo.com/async/#very-technical-details).
+
+<a id="experiment-request-an-unknown-player"></a>
+
+**Finish when** you can show which bundle answered and point to where the
+request gets its player data. Keep terminal B open with the `api` address
+set, and keep the request and local response files. Leave terminal A running
+for [lesson 6 and its unknown-player exercise](./05-authentication-authorization-and-access-boundaries.md#exercise-the-authentication-flow).
