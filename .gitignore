@@ -30,3 +30,9 @@ docs/_build/
 .venv
 /site
 .mypy_cache/
+
+# Local agent tools, editor backup, and application log
+/.agents/
+/.kilo/
+/docs/index.md.orig
+/info.log
