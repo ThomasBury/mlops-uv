@@ -6,9 +6,12 @@ import argparse
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from hashlib import sha256
 from importlib import import_module
+from io import BytesIO
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -26,6 +29,7 @@ from acebet.features import (
     FeatureContractPipeline,
     MODEL_FEATURE_COLUMNS,
     NUMERIC_FEATURE_COLUMNS,
+    build_latest_player_stats,
     ordinal_codes_as_categories,
     select_model_features,
 )
@@ -36,6 +40,7 @@ from acebet.model_artifacts import (
     model_card_path,
     model_metadata_path,
     sha256_file,
+    write_atomic,
     write_json,
 )
 
@@ -89,6 +94,7 @@ class TrainingResult:
     model_kind: str
     package_version: str
     model_checksum: str | None = None
+    post_selection_metrics: dict[str, dict[str, float]] | None = None
 
 
 def get_lgb_params() -> dict[str, int | float | str | bool]:
@@ -124,33 +130,27 @@ def get_lgb_params() -> dict[str, int | float | str | bool]:
 
 
 def prepare_data_for_training_clf(
-    start_date: str, end_date: str
+    start_date: str,
+    end_date: str,
+    *,
+    data_path: Path | None = None,
 ) -> PreparedTrainingData:
     """Load, validate, and inclusively slice the canonical ATP training window."""
-    try:
-        parsed_start_value = pd.Timestamp(start_date)
-        if not isinstance(parsed_start_value, pd.Timestamp):
-            raise ValueError
-        parsed_start = parsed_start_value.normalize()
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"Training window start_date must be a parseable date, got {start_date!r}."
-        ) from exc
-    try:
-        parsed_end_value = pd.Timestamp(end_date)
-        if not isinstance(parsed_end_value, pd.Timestamp):
-            raise ValueError
-        parsed_end = parsed_end_value.normalize()
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"Training window end_date must be a parseable date, got {end_date!r}."
-        ) from exc
+    return _training_window(
+        prepare_data(data_path or DEFAULT_DATA_PATH), start_date, end_date
+    )
+
+
+def _training_window(
+    prepared: pd.DataFrame, start_date: str, end_date: str
+) -> PreparedTrainingData:
+    parsed_start = _calendar_date(start_date, "Training window start_date")
+    parsed_end = _calendar_date(end_date, "Training window end_date")
     if parsed_start > parsed_end:
         raise ValueError(
             f"Training window is reversed: start_date {parsed_start.date()} must be on or before end_date {parsed_end.date()}."
         )
 
-    prepared = prepare_data(DEFAULT_DATA_PATH)
     window = prepared.loc[
         prepared["date"].between(parsed_start, parsed_end, inclusive="both")
     ].reset_index(drop=True)
@@ -180,6 +180,55 @@ def prepare_data_for_training_clf(
         raise ValueError(
             "Prepared training data is misaligned: features, target, and dates must contain the same number of rows."
         )
+    return PreparedTrainingData(features=features, target=target, dates=dates)
+
+
+def _calendar_date(value: str, label: str) -> pd.Timestamp:
+    try:
+        parsed = pd.Timestamp(value)
+        if not isinstance(parsed, pd.Timestamp) or parsed.tzinfo is not None:
+            raise ValueError("Expected a timezone-free calendar date.")
+        return parsed.normalize()
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a parseable date, got {value!r}.") from exc
+
+
+def prepare_post_selection_data(
+    selection_end_date: str,
+    post_selection_end_date: str,
+    *,
+    data_path: Path | None = None,
+) -> PreparedTrainingData:
+    """Slice a strictly later post-selection evaluation window after selection_end_date."""
+    return _post_selection_window(
+        prepare_data(data_path or DEFAULT_DATA_PATH),
+        selection_end_date,
+        post_selection_end_date,
+    )
+
+
+def _post_selection_window(
+    prepared: pd.DataFrame, selection_end_date: str, post_selection_end_date: str
+) -> PreparedTrainingData:
+    parsed_selection_end = _calendar_date(selection_end_date, "Selection end_date")
+    parsed_post_end = _calendar_date(post_selection_end_date, "Post-selection end_date")
+    if parsed_post_end <= parsed_selection_end:
+        raise ValueError(
+            f"Post-selection window must end strictly after end_date {parsed_selection_end.date()}, got {parsed_post_end.date()}."
+        )
+
+    window = prepared.loc[
+        (prepared["date"] > parsed_selection_end)
+        & (prepared["date"] <= parsed_post_end)
+    ].reset_index(drop=True)
+    if window.empty:
+        raise ValueError(
+            f"Post-selection window contains no rows after {parsed_selection_end.date()} through {parsed_post_end.date()}."
+        )
+    dates = window["date"].copy()
+    target = window["target"].to_numpy(dtype="int64", copy=True)
+    _require_binary_target_classes(target, "Post-selection window")
+    features = select_model_features(window).reset_index(drop=True)
     return PreparedTrainingData(features=features, target=target, dates=dates)
 
 
@@ -301,12 +350,14 @@ def export_model(
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
     timestamp = timestamp.astimezone(timezone.utc)
-    path = output_dir / f"model_{timestamp.strftime('%Y-%m-%d-%H-%M-%S')}.joblib"
+    path = output_dir / f"model_{timestamp:%Y-%m-%d-%H-%M-%S_%f}_{uuid4().hex}.joblib"
+    artifact = path.open("xb")
     try:
-        with path.open("xb") as artifact:
+        with artifact:
             dump(model, artifact)
-    except FileExistsError as exc:
-        raise FileExistsError(f"Model artifact already exists: {path}") from exc
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
     return path
 
 
@@ -314,7 +365,7 @@ def _project_relative(path: Path) -> str:
     try:
         return path.resolve().relative_to(PROJECT_ROOT.resolve()).as_posix()
     except ValueError:
-        return str(path.resolve())
+        return path.name
 
 
 def _date_range(dates: pd.Series) -> dict[str, str]:
@@ -339,17 +390,21 @@ def build_model_metadata(
     candidates: dict[str, Any],
     selection: dict[str, Any],
     mlflow_run_id: str | None,
+    source_path: Path,
+    source_sha256: str,
+    player_stats_sha256: str,
+    post_selection: dict[str, Any] | None,
     exported_at: datetime | None = None,
 ) -> dict[str, Any]:
     """Build the complete machine-readable schema-v2 metadata payload."""
     train_dates = data.dates.iloc[holdout.train_indices]
     test_dates = data.dates.iloc[holdout.test_indices]
     timestamp = (exported_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    return {
+    metadata = {
         "schema_version": MODEL_METADATA_SCHEMA_VERSION,
         "dataset": {
-            "source_path": _project_relative(DEFAULT_DATA_PATH),
-            "source_sha256": sha256_file(DEFAULT_DATA_PATH),
+            "source_path": _project_relative(source_path),
+            "source_sha256": source_sha256,
             "requested_window": {"start_date": start_date, "end_date": end_date},
             "observed_window": _date_range(data.dates),
             "holdout_cutoff": holdout.cutoff_date.date().isoformat(),
@@ -369,6 +424,7 @@ def build_model_metadata(
         },
         "candidates": candidates,
         "selection": selection,
+        "player_stats_sha256": player_stats_sha256,
         "model": {
             "filename": exported_model_path.name,
             "kind": model_kind,
@@ -380,6 +436,9 @@ def build_model_metadata(
         "mlflow_run_id": mlflow_run_id,
         "exported_at_utc": timestamp.isoformat(),
     }
+    if post_selection is not None:
+        metadata["post_selection"] = post_selection
+    return metadata
 
 
 def write_model_metadata(exported_model_path: Path, metadata: dict[str, Any]) -> Path:
@@ -420,7 +479,7 @@ def write_model_card(exported_model_path: Path, metadata: dict[str, Any]) -> Pat
         "",
         "## Evaluation Results (Selection Holdout)",
         "",
-        "Metrics below come from the date-grouped selection holdout; no separate post-selection test partition is used. "
+        "The candidate comparison uses the date-grouped selection holdout. "
         "Non-constant candidates must improve unrounded log loss over constant by at least 0.005. "
         "LightGBM replaces a servable Elo model only when it improves unrounded log loss by at least 0.005.",
         "",
@@ -431,14 +490,36 @@ def write_model_card(exported_model_path: Path, metadata: dict[str, Any]) -> Pat
         f"- Model file: `{identity['filename']}`",
         f"- Package identity: `acebet=={identity['package']['version']}`",
         "",
+    ]
+    if post_selection := metadata.get("post_selection"):
+        dates = post_selection["date_range"]
+        lines += [
+            "## Post-selection evaluation",
+            "",
+            f"Scored {post_selection['rows']:,} matches from {dates['start_date']} through "
+            f"{dates['end_date']} with the same fitted candidates. These scores were computed "
+            "after model selection. No candidate was refit.",
+            "",
+            "| Candidate | Accuracy | Log loss | Brier score | ROC AUC |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for name, metric in post_selection["metrics"].items():
+            lines.append(
+                f"| {name} | {metric['accuracy']:.5f} | {metric['log_loss']:.5f} | {metric['brier_score']:.5f} | {metric['roc_auc']:.5f} |"
+            )
+        lines.append("")
+    else:
+        lines += ["This export has no separate post-selection test partition.", ""]
+    lines += [
         "## Security warning",
         "",
         "Checksums provide integrity, not authenticity. Joblib uses pickle and this artifact must only be loaded from a trusted source.",
         "",
     ]
-    output = model_card_path(exported_model_path)
-    output.write_text("\n".join(lines), encoding="utf-8")
-    return output
+    return write_atomic(
+        model_card_path(exported_model_path),
+        lambda stream: stream.write("\n".join(lines)),
+    )
 
 
 def _import_mlflow() -> tuple[Any, Any]:
@@ -550,9 +631,21 @@ def train_model(
     tracking_uri: str = DEFAULT_TRACKING_URI,
     experiment_name: str = DEFAULT_EXPERIMENT_NAME,
     artifact_root: Path = DEFAULT_ARTIFACT_ROOT,
+    *,
+    post_selection_end_date: str | None = None,
+    data_path: Path | None = None,
 ) -> TrainingResult:
     """Fit all candidates, select by log loss, and export only the selected model."""
-    data = prepare_data_for_training_clf(start_date, end_date)
+    source_path = data_path or DEFAULT_DATA_PATH
+    source_sha256 = (
+        sha256_file(source_path) if export_joblib and source_path.is_file() else ""
+    )
+    prepared = prepare_data(source_path)
+    if export_joblib and source_sha256 != sha256_file(source_path):
+        raise ValueError(
+            "Prepared dataset changed while loading. Retry with a stable file."
+        )
+    data = _training_window(prepared, start_date, end_date)
     holdout = date_grouped_temporal_holdout(data)
     X_train = data.features.iloc[holdout.train_indices, :].copy()
     y_train = data.target[holdout.train_indices].copy()
@@ -578,6 +671,25 @@ def train_model(
         MODEL_KIND_LIGHTGBM: lightgbm_model,
     }.get(selected_kind)
 
+    post_selection = None
+    post_selection_metrics = None
+    if post_selection_end_date is not None:
+        post_data = _post_selection_window(prepared, end_date, post_selection_end_date)
+        post_selection_metrics = {
+            "constant": evaluate_probabilities(
+                post_data.target, np.full(len(post_data.target), prevalence)
+            ),
+            "elo": evaluate_model(elo_model, post_data.features, post_data.target),
+            "lightgbm": evaluate_model(
+                lightgbm_model, post_data.features, post_data.target
+            ),
+        }
+        post_selection = {
+            "date_range": _date_range(post_data.dates),
+            "rows": len(post_data.target),
+            "metrics": post_selection_metrics,
+        }
+
     mlflow_run_id = None
     if enable_mlflow:
         mlflow_run_id = log_training_run(
@@ -602,6 +714,8 @@ def train_model(
     exported_path = None
     checksum = None
     if export_joblib:
+        stats_file = BytesIO()
+        build_latest_player_stats(prepared).to_feather(stats_file)
         exported_at = datetime.now(timezone.utc)
         exported_path = export_model(
             selected_model, output_dir, exported_at=exported_at
@@ -617,6 +731,10 @@ def train_model(
                 candidates=candidates,
                 selection=selection,
                 mlflow_run_id=mlflow_run_id,
+                source_path=source_path,
+                source_sha256=source_sha256,
+                player_stats_sha256=sha256(stats_file.getbuffer()).hexdigest(),
+                post_selection=post_selection,
                 exported_at=exported_at,
             )
             write_model_metadata(exported_path, metadata)
@@ -644,6 +762,7 @@ def train_model(
         model_kind=selected_kind,
         package_version=__version__,
         model_checksum=checksum,
+        post_selection_metrics=post_selection_metrics,
     )
 
 
@@ -664,6 +783,17 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_END_DATE,
         metavar="YYYY-MM-DD",
         help="End of the training/selection window (inclusive).",
+    )
+    parser.add_argument(
+        "--post-selection-end-date",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Optional end date for an out-of-sample post-selection evaluation window strictly after --end-date.",
+    )
+    parser.add_argument(
+        "--data-path",
+        default=None,
+        help="Optional prepared Feather dataset path override.",
     )
     parser.add_argument(
         "--output-dir",
@@ -710,12 +840,19 @@ def main() -> None:
         tracking_uri=args.tracking_uri,
         experiment_name=args.experiment_name,
         artifact_root=Path(args.artifact_root),
+        post_selection_end_date=args.post_selection_end_date,
+        data_path=Path(args.data_path) if args.data_path else None,
     )
     print(f"Selected model: {result.model_kind} ({result.selection['reason_code']})")
     for name, metrics in result.candidate_metrics.items():
         print(
             f"{name}: log_loss={metrics['log_loss']}, accuracy={metrics['accuracy']}, brier_score={metrics['brier_score']}, roc_auc={metrics['roc_auc']}"
         )
+    if result.post_selection_metrics is not None:
+        for name, metrics in result.post_selection_metrics.items():
+            print(
+                f"post_selection.{name}: log_loss={metrics['log_loss']}, accuracy={metrics['accuracy']}, brier_score={metrics['brier_score']}, roc_auc={metrics['roc_auc']}"
+            )
     if result.exported_model_path is not None:
         print(f"Exported model: {result.exported_model_path}")
     if result.mlflow_run_id is not None:

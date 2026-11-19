@@ -1,6 +1,5 @@
 import re
 import json
-from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -22,7 +21,7 @@ from acebet.app.dependencies.auth import (
     get_password_hash,
     verify_password,
 )
-from acebet.model_artifacts import model_card_path, model_metadata_path
+from acebet.model_artifacts import model_card_path, model_metadata_path, sha256_file
 from acebet.settings import get_settings
 from acebet.dataprep.dataprep import prepare_data
 from acebet.app.dependencies.predict_winner import (
@@ -191,6 +190,11 @@ def test_operational_routes_are_not_rate_limited(monkeypatch):
 
 
 def test_prediction_routes_share_user_rate_limit(monkeypatch):
+    from acebet.app.dependencies import auth as auth_module
+    from unittest.mock import Mock
+
+    decode = Mock(wraps=auth_module.jwt.decode)
+    monkeypatch.setattr(auth_module.jwt, "decode", decode)
     monkeypatch.setenv("ACEBET_SECRET_KEY", "test-signing-secret")
     monkeypatch.setenv("ACEBET_ENV", "test")
     monkeypatch.setenv("ACEBET_RATE_LIMITING_ENABLED", "true")
@@ -234,6 +238,7 @@ def test_prediction_routes_share_user_rate_limit(monkeypatch):
         get_settings.cache_clear()
 
     assert [response.status_code for response in responses] == [200, 200, 429]
+    assert decode.call_count == len(responses)
 
 
 def test_healthz_returns_ok(client: TestClient, configured_auth_settings):
@@ -787,8 +792,17 @@ def test_feature_contract_excludes_post_match_columns():
 
 
 def test_training_exports_model_artifact(tmp_path):
+    dataset = tmp_path / "custom.feather"
+    prepare_data().assign(source_fixture="custom").to_feather(dataset)
+    stats = tmp_path / "latest_player_stats.feather"
+    prepare_data(dataset, player_stats_output_path=stats)
     result = train_model(
-        "2015-03-04", "2017-03-04", output_dir=tmp_path, export_joblib=True
+        "2015-03-04",
+        "2017-03-04",
+        output_dir=tmp_path,
+        export_joblib=True,
+        data_path=dataset,
+        post_selection_end_date="2018-03-04",
     )
 
     assert result.exported_model_path is not None
@@ -805,22 +819,31 @@ def test_training_exports_model_artifact(tmp_path):
         "end_date": "2017-03-04",
     }
     assert metadata["selection"] == result.selection
+    assert metadata["dataset"]["source_sha256"] == sha256_file(dataset)
+    assert metadata["dataset"]["source_path"].endswith("custom.feather")
+    assert metadata["player_stats_sha256"] == sha256_file(stats)
+    assert metadata["post_selection"]["metrics"] == result.post_selection_metrics
     assert set(result.candidate_metrics) == {"constant", "elo", "lightgbm"}
     assert re.fullmatch(
-        r"model_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.joblib",
+        r"model_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}_\d{6}_[0-9a-f]{32}\.joblib",
         result.exported_model_path.name,
     )
     assert "Candidate comparison" in card_path.read_text(encoding="utf-8")
 
 
-def test_export_model_fails_when_timestamped_artifact_already_exists(tmp_path):
-    exported_at = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+def test_export_model_removes_partial_joblib_on_serialization_failure(
+    tmp_path, monkeypatch
+):
+    from acebet.train import train as train_module
 
-    exported_path = export_model({"model": "first"}, tmp_path, exported_at=exported_at)
+    def fail_dump(_model, stream):
+        stream.write(b"partial")
+        raise OSError("serialization failed")
 
-    assert exported_path.name == "model_2026-01-01-00-00-00.joblib"
-    with pytest.raises(FileExistsError, match="already exists"):
-        export_model({"model": "second"}, tmp_path, exported_at=exported_at)
+    monkeypatch.setattr(train_module, "dump", fail_dump)
+    with pytest.raises(OSError, match="serialization failed"):
+        export_model({"model": "partial"}, tmp_path)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_select_model_features_uses_exact_ordered_allowlist():
@@ -1066,7 +1089,6 @@ def test_phase4_every_context_enum_value_is_accepted(field, allowed_values):
     [
         {"p1_name": "   "},
         {"date": "not-a-date"},
-        {"best_of": "three"},
     ],
 )
 def test_phase4_ordinary_malformed_fields_keep_native_validation(
@@ -1080,6 +1102,43 @@ def test_phase4_ordinary_malformed_fields_keep_native_validation(
 
     assert response.status_code == 422
     assert isinstance(response.json()["detail"], list)
+
+
+@pytest.mark.parametrize("best_of", [4, "3", 3.5, True, None])
+def test_best_of_errors_have_one_domain_shape(best_of, client, auth_headers):
+    response = client.post(
+        "/predict/testing", headers=auth_headers, json=phase4_payload(best_of=best_of)
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["code"] == "unsupported_context_values"
+    assert detail["context"]["invalid_fields"] == [
+        {"field": "best_of", "submitted_value": best_of, "allowed_values": [3, 5]}
+    ]
+
+
+def test_unbounded_snapshot_age_warns_after_60_days(client, auth_headers, monkeypatch):
+    from acebet.app.routers import prediction as prediction_router
+    from unittest.mock import Mock
+
+    logger = Mock()
+    monkeypatch.setattr(prediction_router, "get_request_logger", lambda: logger)
+    install_phase4_assets(
+        client, player_stats=synthetic_player_stats("2026-01-01", "2026-01-02")
+    )
+    for match_date in ("2026-03-02", "2026-03-03"):
+        response = client.post(
+            "/predict/testing",
+            headers=auth_headers,
+            json=phase4_payload(date=match_date),
+        )
+        assert response.status_code == 200
+    logger.warning.assert_called_once_with(
+        "prediction_stale_snapshots",
+        prediction_mode="testing",
+        p1_age_days=61,
+        p2_age_days=60,
+    )
 
 
 @pytest.mark.parametrize(

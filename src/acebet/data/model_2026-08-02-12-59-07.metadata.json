@@ -135,6 +135,34 @@
     "sha256": "a51b64ddddc094260ff41aa68beba9662bdb7769076130f55b1ed54a51a703c7",
     "trusted_only": true
   },
+  "player_stats_sha256": "bad2d0f978840b0daadc4416cbfe49375e1abdf57a09b8edfc8a6b9f28f7bb8b",
+  "post_selection": {
+    "date_range": {
+      "end_date": "2018-03-04",
+      "start_date": "2017-03-05"
+    },
+    "metrics": {
+      "constant": {
+        "accuracy": 0.5,
+        "brier_score": 0.25000008247882516,
+        "log_loss": 0.6931473455176228,
+        "roc_auc": 0.5
+      },
+      "elo": {
+        "accuracy": 0.6520912547528517,
+        "brier_score": 0.21831096464972435,
+        "log_loss": 0.6294753216072589,
+        "roc_auc": 0.7107860457719499
+      },
+      "lightgbm": {
+        "accuracy": 0.6490494296577947,
+        "brier_score": 0.22278671208977946,
+        "log_loss": 0.6400721710669716,
+        "roc_auc": 0.7001500672266479
+      }
+    },
+    "rows": 2630
+  },
   "schema_version": 2,
   "selection": {
     "deltas": {

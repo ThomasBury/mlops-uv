@@ -95,7 +95,11 @@ def set_nested(payload: dict, path: str, value: object) -> None:
         ("selection", {}, "Recorded model selection"),
         ("selection.reason_code", "elo_only_servable", "Recorded model selection"),
         ("model.kind", "lightgbm", "Model kind"),
-        ("model.package.version", "999", "package version mismatch"),
+        ("model.package", [], "package identity"),
+        ("model.package.name", "unrelated", "package identity"),
+        ("model.package.version", 999, "package identity"),
+        ("model.package.version", " ", "package identity"),
+        ("player_stats_sha256", "malformed", "Player stats sha256"),
         ("model.serialization", "pickle", "trusted-only joblib"),
         ("model.sha256", "bad", "Model sha256"),
     ],
@@ -489,3 +493,35 @@ def test_loaded_player_identity_preserves_stored_whitespace(tmp_path):
     stats.to_feather(path)
     loaded = load_player_stats(path)
     assert loaded.loc[" Alpha ", "player"] == " Alpha "
+
+
+def test_load_player_stats_verifies_expected_sha256_and_avoids_double_wrapping(
+    tmp_path,
+):
+    from acebet.model_artifacts import sha256_file
+
+    stats = pd.DataFrame(
+        {
+            "player": ["Alpha", "Beta"],
+            "rank": [1, 2],
+            "elo": [2000.0, 1900.0],
+            "as_of_date": ["2025-01-01"] * 2,
+        }
+    )
+    path = tmp_path / "stats.feather"
+    stats.to_feather(path)
+    digest = sha256_file(path)
+
+    loaded = load_player_stats(path, expected_sha256=digest)
+    assert loaded.index.tolist() == ["Alpha", "Beta"]
+
+    with pytest.raises(ValueError, match="Player stats SHA-256 mismatch"):
+        load_player_stats(path, expected_sha256="0" * 64)
+
+    invalid_path = tmp_path / "invalid.feather"
+    stats.drop(columns=["elo"]).to_feather(invalid_path)
+    with pytest.raises(ValueError) as exc_info:
+        load_player_stats(invalid_path)
+    assert not str(exc_info.value).startswith(
+        "Error occurred while loading player stats:"
+    )

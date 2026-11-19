@@ -119,7 +119,21 @@ def load_prediction_assets(
     if bundle is None:
         bundle = load_model_bundle(cache_key)
         model_cache[cache_key] = bundle
-    player_stats = load_player_stats(stats_file)
+    expected_stats_sha256 = None
+    if prediction_mode == "production":
+        expected_stats_sha256 = bundle.player_stats_sha256
+        if settings.player_stats_sha256 is not None:
+            if expected_stats_sha256 not in (None, settings.player_stats_sha256):
+                raise ValueError(
+                    "ACEBET_PLAYER_STATS_SHA256 disagrees with the promoted bundle."
+                )
+            expected_stats_sha256 = settings.player_stats_sha256
+        if expected_stats_sha256 is None and (settings.data_dir or settings.model_dir):
+            raise ValueError(
+                "Overridden assets require a player stats digest. Export a bound bundle "
+                "or set ACEBET_PLAYER_STATS_SHA256 for an older bundle."
+            )
+    player_stats = load_player_stats(stats_file, expected_sha256=expected_stats_sha256)
     assert_prediction_feature_contract(bundle.estimator, player_stats)
     return PredictionAssets(
         model=bundle.estimator,
@@ -219,7 +233,10 @@ async def user_logging_middleware(request: Request, call_next) -> Response:
     request_id = get_request_id(request)
     request.state.request_id = request_id
     bind_request_context(
-        request_id=request_id, method=request.method, path=request.url.path
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+        trace_api=getattr(request.app.state, "trace_api", None),
     )
     logger = get_request_logger()
     start_time = time.perf_counter()

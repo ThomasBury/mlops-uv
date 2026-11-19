@@ -118,7 +118,7 @@ class PredictionRequest(BaseModel):
     @field_validator(*PREDICTION_CONTEXT_FIELDS, mode="before")
     @classmethod
     def reject_unsupported_context(cls, value: object, info: ValidationInfo) -> object:
-        """Tag well-formed unsupported values for route-specific error mapping."""
+        """Tag unsupported context, including best-of values with the wrong type."""
         field = info.field_name
         if field is None:
             return value
@@ -127,9 +127,9 @@ class PredictionRequest(BaseModel):
         is_expected_type = isinstance(value, expected_type)
         if field == "best_of" and isinstance(value, bool):
             is_expected_type = False
-        if field == "best_of" and not is_expected_type:
-            raise ValueError("best_of must be an integer")
-        if is_expected_type and value not in allowed_values:
+        if (field == "best_of" and not is_expected_type) or (
+            is_expected_type and value not in allowed_values
+        ):
             raise PydanticCustomError(
                 "unsupported_context_value",
                 "Unsupported match context value",

@@ -11,6 +11,7 @@ import sys
 from html import unescape
 
 import markdown
+import pandas as pd
 
 from fastapi.testclient import TestClient
 import pytest
@@ -28,9 +29,9 @@ REQUEST_PAYLOAD = {
     "p2_name": "Jarry N.",
     "date": "2018-03-04",
     "series": "ATP250",
-    "court": "Outdoor",
-    "surface": "Hard",
-    "round": "1st Round",
+    "court": "Indoor",
+    "surface": "Clay",
+    "round": "The Final",
     "best_of": 3,
 }
 
@@ -55,6 +56,22 @@ def _canonical_documented_response() -> dict[str, object]:
 
 @pytest.mark.api
 def test_documented_canonical_response_matches_real_packaged_bundle(monkeypatch):
+    justfile = (PROJECT_ROOT / "justfile").read_text(encoding="utf-8")
+    payload_line = next(
+        line for line in justfile.splitlines() if line.startswith("predict_payload := ")
+    )
+    assert json.loads(json.loads(payload_line.split(" := ", 1)[1])) == REQUEST_PAYLOAD
+    historical = pd.read_feather(
+        PROJECT_ROOT / "data" / "atp_data_production.feather"
+    ).iloc[-1]
+    assert {REQUEST_PAYLOAD["p1_name"], REQUEST_PAYLOAD["p2_name"]} == {
+        historical["p1"],
+        historical["p2"],
+    }
+    for field in ("series", "court", "surface", "round"):
+        assert REQUEST_PAYLOAD[field] == historical[field]
+    assert REQUEST_PAYLOAD["best_of"] == historical["best of"]
+    assert REQUEST_PAYLOAD["date"] == historical["date"].date().isoformat()
     monkeypatch.setenv("ACEBET_SECRET_KEY", "phase7-contract-secret")
     monkeypatch.setenv("ACEBET_ENV", "test")
     monkeypatch.setenv("ACEBET_RATE_LIMITING_ENABLED", "false")
@@ -146,11 +163,24 @@ def test_documented_selection_and_bundle_match_committed_records():
         promotion["metadata_sha256"],
         promotion["modelcard_sha256"],
         metadata["dataset"]["source_sha256"],
+        metadata["player_stats_sha256"],
         promotion["model_kind"],
         promotion["selection_reason"],
     }
     for value in documented_values:
         assert value in artifact_guide
+    assert (
+        _sha256(PACKAGE_DATA_DIR / "latest_player_stats.feather")
+        == metadata["player_stats_sha256"]
+    )
+    post = metadata["post_selection"]
+    assert (
+        post["date_range"]["start_date"]
+        > metadata["dataset"]["observed_window"]["end_date"]
+    )
+    card = modelcard_path.read_text(encoding="utf-8")
+    assert f"{post['rows']:,}" in card
+    assert f"{post['metrics']['elo']['log_loss']:.5f}" in card
 
 
 def test_notebook_is_clean_non_exporting_and_uses_shared_contracts():

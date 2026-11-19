@@ -3,6 +3,7 @@
 import asyncio
 import inspect
 import re
+import shutil
 from unittest.mock import Mock
 
 import numpy as np
@@ -22,7 +23,13 @@ from acebet.app.main import app, create_app
 from acebet.app.observability import shutdown_tracing
 from acebet.app.runtime import PredictionAssets
 from acebet.features import MODEL_FEATURE_COLUMNS
-from acebet.model_artifacts import read_json
+from acebet.model_artifacts import (
+    build_promotion_record,
+    model_metadata_path,
+    read_json,
+    sha256_file,
+    write_json,
+)
 from acebet.settings import AppSettings, get_settings
 
 pytestmark = pytest.mark.api
@@ -515,6 +522,7 @@ def test_logging_middleware_records_and_reraises_application_errors(
     request = Request(
         {
             "type": "http",
+            "app": create_app(),
             "method": "GET",
             "path": "/explodes",
             "raw_path": b"/explodes",
@@ -586,8 +594,18 @@ def test_malformed_external_player_state_fails_startup_and_clears_assets(
         if column in ("rank", "elo") and value is None:
             stats[column] = stats[column].astype("Float64")
         stats.loc[2, column] = value
-    stats.to_feather(tmp_path / "latest_player_stats.feather")
-    monkeypatch.setenv("ACEBET_DATA_DIR", str(tmp_path))
+    external = shutil.copytree(main.PACKAGE_DATA_DIR, tmp_path / "assets")
+    stats_file = external / "latest_player_stats.feather"
+    stats.to_feather(stats_file)
+    pointer = external / "promoted_model.json"
+    model = external / read_json(pointer)["model_filename"]
+    metadata_file = model_metadata_path(model)
+    metadata = read_json(metadata_file)
+    metadata["player_stats_sha256"] = sha256_file(stats_file)
+    write_json(metadata_file, metadata)
+    write_json(pointer, build_promotion_record(model))
+    monkeypatch.setenv("ACEBET_MODEL_DIR", str(external))
+    monkeypatch.setenv("ACEBET_DATA_DIR", str(external))
     get_settings.cache_clear()
     application = create_app()
     with pytest.raises(ValueError, match=message):
@@ -595,6 +613,57 @@ def test_malformed_external_player_state_fails_startup_and_clears_assets(
             pass
     assert application.state.runtime_assets.production is None
     assert application.state.runtime_assets.testing is None
+
+
+def test_external_stats_must_match_the_promoted_bundle(
+    tmp_path, monkeypatch, phase5_settings
+):
+    stats = pd.read_feather(main.PACKAGE_DATA_DIR / "latest_player_stats.feather")
+    stats.loc[0, "rank"] += 1
+    path = tmp_path / "latest_player_stats.feather"
+    stats.to_feather(path)
+    monkeypatch.setenv("ACEBET_DATA_DIR", str(tmp_path))
+    for configured_digest, error in (
+        (None, "Player stats SHA-256 mismatch"),
+        (sha256_file(path), "disagrees with the promoted bundle"),
+    ):
+        if configured_digest:
+            monkeypatch.setenv("ACEBET_PLAYER_STATS_SHA256", configured_digest)
+        get_settings.cache_clear()
+        with pytest.raises(ValueError, match=error), TestClient(create_app()):
+            pass
+
+
+def test_legacy_bundle_needs_explicit_digest_when_assets_are_overridden(
+    tmp_path, monkeypatch
+):
+    external = shutil.copytree(main.PACKAGE_DATA_DIR, tmp_path / "assets")
+    pointer = external / "promoted_model.json"
+    model = external / read_json(pointer)["model_filename"]
+    metadata_file = model_metadata_path(model)
+    metadata = read_json(metadata_file)
+    del metadata["player_stats_sha256"]
+    write_json(metadata_file, metadata)
+    write_json(pointer, build_promotion_record(model))
+    digest = sha256_file(external / "latest_player_stats.feather")
+    monkeypatch.setattr(main, "PACKAGE_DATA_DIR", external)
+    settings = AppSettings(_env_file=None, _secrets_dir=tmp_path)
+    assert (
+        main.load_prediction_assets("production", {}, settings).model_identity.kind
+        == "elo_baseline"
+    )
+
+    override = settings.model_copy(update={"model_dir": external})
+    with pytest.raises(
+        ValueError, match="Overridden assets require a player stats digest"
+    ):
+        main.load_prediction_assets("production", {}, override)
+
+    pinned = override.model_copy(update={"player_stats_sha256": digest})
+    assert (
+        main.load_prediction_assets("production", {}, pinned).model_identity.kind
+        == "elo_baseline"
+    )
 
 
 def test_startup_feature_check_uses_loaded_snapshot_values(monkeypatch):

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import log_loss
 
 from acebet.features import add_derived_match_features, build_latest_player_stats
 
@@ -119,6 +120,91 @@ def validate_prepared_data_contract(df: pd.DataFrame) -> pd.DataFrame:
     return validated
 
 
+def summarize_elo_causal_evidence(df: pd.DataFrame) -> dict[str, float | int]:
+    """Summarize sequential Elo transition ordering and pre-match odds alignment."""
+    validated = (
+        validate_prepared_data_contract(df)
+        .sort_values("date", kind="stable")
+        .reset_index(drop=True)
+    )
+    validated["row_id"] = np.arange(len(validated))
+    target_bool = validated["target"].astype(bool)
+
+    p1 = validated[["row_id", "date", "p1", "elo_p1"]].rename(
+        columns={"p1": "player", "elo_p1": "elo"}
+    )
+    p1["won"] = target_bool
+    p2 = validated[["row_id", "date", "p2", "elo_p2"]].rename(
+        columns={"p2": "player", "elo_p2": "elo"}
+    )
+    p2["won"] = ~target_bool
+
+    appearances = pd.concat([p1, p2], ignore_index=True).sort_values(
+        "row_id", kind="stable"
+    )
+    appearances["ambiguous_date"] = appearances.duplicated(
+        ["player", "date"], keep=False
+    )
+    next_appearance = appearances.groupby("player")[
+        ["date", "elo", "won", "ambiguous_date"]
+    ].shift(-1)
+    appearances["delta_to_next"] = next_appearance["elo"] - appearances["elo"]
+    appearances["next_won"] = next_appearance["won"]
+    transitions = appearances.loc[
+        (next_appearance["date"] > appearances["date"])
+        & ~appearances["ambiguous_date"]
+        & next_appearance["ambiguous_date"].eq(False)
+    ]
+    wins = transitions.loc[transitions["won"], "delta_to_next"]
+    losses = transitions.loc[~transitions["won"], "delta_to_next"]
+    next_wins = transitions.loc[transitions["next_won"].eq(True), "delta_to_next"]
+    next_losses = transitions.loc[transitions["next_won"].eq(False), "delta_to_next"]
+
+    summary: dict[str, float | int] = {
+        "player_transitions": int(len(transitions)),
+        "post_win_elo_increase_rate": float((wins > 0).mean()) if len(wins) else 0.0,
+        "post_loss_elo_decrease_rate": (
+            float((losses < 0).mean()) if len(losses) else 0.0
+        ),
+        "elo_increase_by_next_win_rate": float((next_wins > 0).mean())
+        if len(next_wins)
+        else 0.0,
+        "elo_decrease_by_next_loss_rate": float((next_losses < 0).mean())
+        if len(next_losses)
+        else 0.0,
+        "pinnacle_odds_rows": 0,
+    }
+
+    if {"ps_p1", "ps_p2"}.issubset(validated.columns):
+        odds = validated.copy()
+        odds["ps_p1"] = pd.to_numeric(odds["ps_p1"], errors="coerce")
+        odds["ps_p2"] = pd.to_numeric(odds["ps_p2"], errors="coerce")
+        odds = odds.loc[
+            odds["ps_p1"].gt(1.0)
+            & odds["ps_p2"].gt(1.0)
+            & np.isfinite(odds["ps_p1"])
+            & np.isfinite(odds["ps_p2"])
+        ]
+        if len(odds) >= 2 and odds["target"].nunique() == 2:
+            inv_p1 = 1.0 / odds["ps_p1"].to_numpy(dtype=float)
+            inv_p2 = 1.0 / odds["ps_p2"].to_numpy(dtype=float)
+            pinnacle_proba = inv_p1 / (inv_p1 + inv_p2)
+            elo_proba = odds["proba_elo"].to_numpy(dtype=float)
+            y_true = odds["target"].to_numpy(dtype=int)
+            summary["pinnacle_odds_rows"] = int(len(odds))
+            summary["elo_log_loss_on_odds_subset"] = float(
+                log_loss(y_true, elo_proba, labels=[0, 1])
+            )
+            summary["pinnacle_log_loss_on_odds_subset"] = float(
+                log_loss(y_true, pinnacle_proba, labels=[0, 1])
+            )
+            if np.ptp(elo_proba) and np.ptp(pinnacle_proba):
+                summary["elo_pinnacle_probability_correlation"] = float(
+                    np.corrcoef(elo_proba, pinnacle_proba)[0, 1]
+                )
+    return summary
+
+
 def prepare_data(
     input_path: Path = DEFAULT_PRODUCTION_DATA_PATH,
     output_path: Path | None = None,
@@ -136,7 +222,8 @@ def prepare_data(
     if not input_path.exists():
         raise FileNotFoundError(
             f"Prepared dataset not found at {input_path}. "
-            "This tutorial uses data/atp_data_production.feather as its canonical data source."
+            "This tutorial uses data/atp_data_production.feather as its canonical data source. "
+            "Run from a repository checkout or supply an explicit --input-path / --data-path."
         )
 
     df = validate_prepared_data_contract(pd.read_feather(input_path))

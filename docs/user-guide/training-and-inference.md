@@ -27,8 +27,9 @@ and moves to the beginning of that date: training receives strictly earlier
 dates, while the selection holdout receives the cutoff date and everything later. Training
 fails with a contextual error if the window is reversed, empty, too small,
 non-monotonic, or cannot produce two non-empty partitions that each contain
-both target classes. No independent final test is implemented. Existing Python
-`test` names and metadata fields refer to this selection holdout.
+both target classes. The standard recipes then score the fitted candidates on
+the following year of matches. Existing Python `test` names and metadata fields
+under `dataset` refer to the selection holdout.
 
 Artifact changes are a separate, explicit workflow:
 
@@ -76,9 +77,15 @@ The training code computes accuracy, log loss, Brier score, and ROC AUC for the
 constant, Elo, and LightGBM candidates from the same selection holdout. Only unrounded log
 loss selects a model: learned candidates must beat constant by `0.005`, and
 LightGBM must then beat a servable Elo candidate by `0.005`. These margins are
-fixed policy, not CLI options. MLflow logs all comparisons, selection deltas,
-the selected sklearn model, and all three bundle files when exported. The CLI
-still supports `--tracking-uri`, `--experiment-name`, and `--artifact-root`.
+fixed in the selection policy. The standard Just recipes pass
+`--post-selection-end-date 2018-03-04` to score the same candidates on dates
+strictly after `--end-date`. The export records those results under
+`post_selection` in metadata and in the model card. MLflow logs selection
+metrics and deltas, and attaches the three bundle files when exported.
+
+The training CLI uses the prepared dataset from a repository checkout by
+default. When running from a wheel, pass `--data-path` with a prepared Feather
+file. For export from a wheel, also choose a writable `--output-dir`.
 
 For the exact local artifact bundle and promotion workflow, read
 [Model Artifacts and Promotion](./model-artifacts-and-promotion.md).
@@ -169,15 +176,23 @@ only when `ACEBET_ENV` is `development` or `test`.
   `promoted_model.json` there.
 - `ACEBET_DATA_DIR` overrides only the production data directory and requires
   `latest_player_stats.feather` there.
+- Production startup checks the player-state SHA-256 recorded by training.
+  To serve an older bundle with directory overrides, set
+  `ACEBET_PLAYER_STATS_SHA256` to the digest of its trusted player-state file.
 - Testing always uses packaged sample player state and the packaged promoted
   model, regardless of production overrides.
 
 Every model directory must contain `promoted_model.json`; there is no
 newest-filename fallback. A missing configured path fails startup rather than
 silently using packaged assets. The loader validates schema-v2 sidecars, hashes,
-selection, model kind, feature contract, and exact package version before
-joblib deserialization. Direct-file loading is reserved for trusted tooling and
-still requires both complete sidecars.
+selection, model kind, and feature contract before joblib deserialization.
+The package version records which AceBet version exported the bundle.
+Direct-file loading is reserved for trusted tooling and still requires both
+complete sidecars.
+
+Set `ACEBET_MAX_SNAPSHOT_AGE_DAYS` to reject snapshots older than your limit.
+With the setting unset, successful requests using a snapshot older than 60
+days emit a warning with both ages.
 
 To serve the artifacts produced by local promotion:
 
@@ -207,7 +222,7 @@ Those are the default demo credentials. Override them with
   "p2_name": "Jarry N.",
   "date": "2018-03-04",
   "series": "ATP250",
-  "court": "Outdoor",
+  "court": "Indoor",
   "surface": "Clay",
   "round": "The Final",
   "best_of": 3
@@ -216,3 +231,6 @@ Those are the default demo credentials. Override them with
 
 Send that body to `/predict/production` for production assets or to
 `/predict/testing` for packaged sample/testing assets outside production.
+The payload uses the indoor clay context of the 2018 Brasil Open final, just
+as `just predict-production` does. The packaged snapshots come from the same
+match row, so this is a replay of a known result.

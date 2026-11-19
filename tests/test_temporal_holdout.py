@@ -233,3 +233,31 @@ def test_repeated_preparation_holdout_and_training_are_deterministic():
     first_result = train_model("2015-03-04", "2017-03-04")
     second_result = train_model("2015-03-04", "2017-03-04")
     assert first_result.metrics == second_result.metrics
+
+
+def test_post_selection_window_evaluates_strictly_later_matches_without_changing_selection():
+    from acebet.train.train import prepare_post_selection_data
+
+    baseline = train_model("2015-03-04", "2017-03-04")
+    with_post = train_model(
+        "2015-03-04",
+        "2017-03-04",
+        post_selection_end_date="2018-03-04",
+    )
+
+    assert with_post.selection == baseline.selection
+    assert with_post.candidate_metrics == baseline.candidate_metrics
+    assert with_post.post_selection_metrics is not None
+    assert set(with_post.post_selection_metrics) == {"constant", "elo", "lightgbm"}
+    assert (
+        with_post.post_selection_metrics["elo"]["log_loss"]
+        < with_post.post_selection_metrics["lightgbm"]["log_loss"]
+        < with_post.post_selection_metrics["constant"]["log_loss"]
+    )
+
+    with pytest.raises(ValueError, match="strictly after end_date"):
+        prepare_post_selection_data("2017-03-04", "2017-03-04")
+    with pytest.raises(ValueError, match="parseable date"):
+        prepare_post_selection_data("2017-03-04", "not-a-date")
+    with pytest.raises(ValueError, match="contains no rows"):
+        prepare_post_selection_data("2018-03-04", "2019-03-04")

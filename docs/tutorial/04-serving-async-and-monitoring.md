@@ -37,9 +37,9 @@ cat > var/tutorial/request.json <<'JSON'
   "p2_name": "Jarry N.",
   "date": "2018-03-04",
   "series": "ATP250",
-  "court": "Outdoor",
-  "surface": "Hard",
-  "round": "1st Round",
+  "court": "Indoor",
+  "surface": "Clay",
+  "round": "The Final",
   "best_of": 3
 }
 JSON

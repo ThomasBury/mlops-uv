@@ -371,3 +371,22 @@ def test_prepare_data_accepts_unsigned_elo_ratings(tmp_path):
 def test_elo_win_probability_handles_extreme_rating_gaps_without_overflow():
     assert elo_win_probability(0.0, 1_000_000.0) == 0.0
     assert elo_win_probability(1_000_000.0, 0.0) == 1.0
+
+
+def test_summarize_elo_causal_evidence_verifies_transitions_and_odds_alignment():
+    from acebet.dataprep.dataprep import summarize_elo_causal_evidence
+
+    df = prepare_data()
+    evidence = summarize_elo_causal_evidence(df)
+
+    assert evidence["player_transitions"] == 75_072
+    assert evidence["post_win_elo_increase_rate"] > 0.99
+    assert evidence["post_loss_elo_decrease_rate"] > 0.99
+    assert evidence["elo_increase_by_next_win_rate"] < 0.55
+    assert evidence["elo_decrease_by_next_loss_rate"] < 0.55
+    assert evidence["pinnacle_odds_rows"] > 30_000
+    assert (
+        evidence["pinnacle_log_loss_on_odds_subset"]
+        < evidence["elo_log_loss_on_odds_subset"]
+    )
+    assert evidence["elo_pinnacle_probability_correlation"] > 0.85

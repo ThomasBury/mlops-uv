@@ -1,11 +1,11 @@
 {
   "metadata_filename": "model_2026-08-02-12-59-07.metadata.json",
-  "metadata_sha256": "84ed83817d78890c0dac5a075bcb90ee192747fa2bde9895c1a4ba658365f86a",
+  "metadata_sha256": "b5f0b8bf32b98e40bd7da38f9244cf194c8a015e5a1e9a1217db33558f2573e5",
   "model_filename": "model_2026-08-02-12-59-07.joblib",
   "model_kind": "elo_baseline",
   "model_sha256": "a51b64ddddc094260ff41aa68beba9662bdb7769076130f55b1ed54a51a703c7",
   "modelcard_filename": "model_2026-08-02-12-59-07.modelcard.md",
-  "modelcard_sha256": "acc3dff3b691cfc6cd5f2f1cef33d168486d325e4528daa17a62fb20c2b46640",
+  "modelcard_sha256": "91393f6758f7090294674145f5db4efc268bcdf2ba0a9b531a0d178b84ff196a",
   "package_name": "acebet",
   "package_version": "0.2.3",
   "promoted_at_utc": "2026-08-02T12:59:07.126595+00:00",

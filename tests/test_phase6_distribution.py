@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tarfile
+from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 
 from packaging.requirements import Requirement
@@ -161,7 +162,15 @@ def _install_in_clean_venv(venv: Path, requirement: str) -> Path:
     return python
 
 
+@pytest.fixture
+def clean_venv(tmp_path):
+    with TemporaryDirectory(dir=tmp_path) as directory:
+        yield Path(directory)
+
+
 DEFAULT_SMOKE = """
+import subprocess
+import sys
 from importlib.metadata import distributions
 installed = {
     item.metadata['Name'].lower().replace('_', '-') for item in distributions()
@@ -178,6 +187,11 @@ with TestClient(app) as client:
     assert client.get('/healthz').json() == {'status': 'ok'}
     assert client.get('/readyz').json() == {'status': 'ready'}
     assert type(app.state.runtime_assets.production.model).__name__ == 'EloBaselineClassifier'
+training = subprocess.run(
+    [sys.executable, '-m', 'acebet.train.train'], capture_output=True, text=True
+)
+assert training.returncode != 0
+assert 'Prepared dataset not found' in training.stderr and '--data-path' in training.stderr
 """
 
 TRACING_SMOKE = """
@@ -194,10 +208,10 @@ assert app.state.tracer_provider is None
 
 @pytest.mark.parametrize("artifact_index", [0, 1], ids=["wheel", "sdist"])
 def test_default_clean_install_serves_without_optional_packages(
-    distributions, tmp_path, artifact_index
+    distributions, tmp_path, artifact_index, clean_venv
 ):
     artifact = distributions[artifact_index]
-    python = _install_in_clean_venv(tmp_path / "venv", str(artifact))
+    python = _install_in_clean_venv(clean_venv, str(artifact))
     environment = os.environ.copy()
     environment.update(
         {
@@ -217,9 +231,11 @@ def test_default_clean_install_serves_without_optional_packages(
     )
 
 
-def test_tracing_extra_clean_install_starts_and_shuts_down(distributions, tmp_path):
+def test_tracing_extra_clean_install_starts_and_shuts_down(
+    distributions, tmp_path, clean_venv
+):
     wheel, _ = distributions
-    python = _install_in_clean_venv(tmp_path / "venv", f"{wheel}[tracing]")
+    python = _install_in_clean_venv(clean_venv, f"{wheel}[tracing]")
     environment = os.environ.copy()
     environment.update(
         {

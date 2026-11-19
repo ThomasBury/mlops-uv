@@ -47,9 +47,9 @@ Testing prediction is available only when `ACEBET_ENV` is `development` or
   "p2_name": "Jarry N.",
   "date": "2018-03-04",
   "series": "ATP250",
-  "court": "Outdoor",
-  "surface": "Hard",
-  "round": "1st Round",
+  "court": "Indoor",
+  "surface": "Clay",
+  "round": "The Final",
   "best_of": 3
 }
 ```
