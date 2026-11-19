@@ -193,7 +193,10 @@ def add_derived_match_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def elo_win_probability(elo_p1: float, elo_p2: float) -> float:
     """Return the Elo probability of player 1 beating player 2."""
-    return float(1 / (1 + 10 ** ((elo_p2 - elo_p1) / 400)))
+    exponent = (elo_p2 - elo_p1) / 400
+    if exponent > 300:
+        return 0.0
+    return float(1 / (1 + 10**exponent))
 
 
 def build_latest_player_stats(matches: pd.DataFrame) -> pd.DataFrame:

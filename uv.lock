@@ -43,6 +43,7 @@ tracing = [
 dev = [
     { name = "coverage" },
     { name = "ipykernel" },
+    { name = "markdown" },
     { name = "matplotlib" },
     { name = "nbclient" },
     { name = "pytest" },
@@ -86,6 +87,7 @@ provides-extras = ["tracing"]
 dev = [
     { name = "coverage", specifier = ">=7.6.12" },
     { name = "ipykernel", specifier = ">=6.29.5" },
+    { name = "markdown", specifier = ">=3.6" },
     { name = "matplotlib", specifier = ">=3.9.2" },
     { name = "nbclient", specifier = ">=0.10.2" },
     { name = "pytest", specifier = ">=8.3.4" },

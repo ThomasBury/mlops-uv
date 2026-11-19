@@ -23,7 +23,7 @@ def _prepared_frame(dates: list[str], targets: list[int]) -> pd.DataFrame:
             "rank_p1": np.arange(1, row_count + 1),
             "rank_p2": np.arange(2, row_count + 2),
             "elo_p1": np.linspace(1500.0, 1600.0, row_count),
-            "elo_p2": np.linspace(1450.0, 1550.0, row_count),
+            "elo_p2": np.linspace(1500.0, 1600.0, row_count),
             "proba_elo": np.full(row_count, 0.5),
             "target": targets,
         }

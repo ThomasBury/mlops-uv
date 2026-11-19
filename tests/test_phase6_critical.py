@@ -15,6 +15,7 @@ import pytest
 from acebet.app.dependencies import predict_winner
 from acebet.app.dependencies.predict_winner import (
     PlayerSnapshot,
+    StaleSnapshotsError,
     UnknownPlayerSnapshotsError,
     calculate_feature_freshness,
     load_model_bundle,
@@ -90,7 +91,9 @@ def set_nested(payload: dict, path: str, value: object) -> None:
         ),
         ("candidates.elo.servable", False, "servability flag"),
         ("candidates.lightgbm.parameters", [], "parameters are missing"),
+        ("selection", None, "Recorded model selection"),
         ("selection", {}, "Recorded model selection"),
+        ("selection.reason_code", "elo_only_servable", "Recorded model selection"),
         ("model.kind", "lightgbm", "Model kind"),
         ("model.package.version", "999", "package version mismatch"),
         ("model.serialization", "pickle", "trusted-only joblib"),
@@ -140,6 +143,33 @@ def test_metadata_rejects_selection_with_no_servable_candidate():
     metadata["selection"] = compute_selection(metadata["candidates"])
     with pytest.raises(ValueError, match="no servable selected candidate"):
         validate_model_metadata(metadata)
+
+
+@pytest.mark.parametrize(
+    ("winner", "reason"),
+    [
+        ("elo", "Elo is the only learned candidate that beats the constant baseline."),
+        (
+            "lightgbm",
+            "LightGBM is the only learned candidate that beats the constant baseline.",
+        ),
+    ],
+)
+def test_metadata_accepts_previous_schema_v2_selection_wording(winner, reason):
+    metadata = canonical_metadata()
+    metrics = {
+        name: dict(metadata["candidates"][name]["metrics"], log_loss=0.5)
+        for name in ("constant", "elo", "lightgbm")
+    }
+    metrics[winner]["log_loss"] = 0.4
+    metadata["candidates"] = candidates_with_selection_details(
+        metrics, training_prevalence=0.5, lightgbm_parameters={"n_estimators": 1}
+    )
+    metadata["selection"] = compute_selection(metadata["candidates"])
+    metadata["selection"]["reason"] = reason
+    metadata["model"]["kind"] = "elo_baseline" if winner == "elo" else "lightgbm"
+
+    assert validate_model_metadata(metadata)["reason_code"] == f"{winner}_only_servable"
 
 
 def test_json_and_artifact_listing_helpers(tmp_path):
@@ -289,8 +319,40 @@ def test_snapshot_validation_defenses():
 
 def test_feature_freshness_allows_current_snapshots():
     snapshot = PlayerSnapshot("A", 1.0, 2000.0, date(2025, 1, 1))
-    freshness = calculate_feature_freshness(date(2025, 1, 1), snapshot, snapshot)
+    freshness = calculate_feature_freshness(
+        date(2025, 1, 1), snapshot, snapshot, max_age_days=30
+    )
     assert freshness.p1_age_days == freshness.p2_age_days == 0
+    with pytest.raises(
+        StaleSnapshotsError, match="exceed the configured maximum age"
+    ) as exc:
+        calculate_feature_freshness(
+            date(2025, 2, 15), snapshot, snapshot, max_age_days=30
+        )
+    assert exc.value.context.max_age_days == 30
+    assert [
+        (player.role, player.age_days) for player in exc.value.context.affected_players
+    ] == [
+        ("p1", 45),
+        ("p2", 45),
+    ]
+
+
+@pytest.mark.parametrize("bad_elo", [0.0, 5000.1])
+def test_load_player_stats_rejects_out_of_bounds_elo(monkeypatch, bad_elo):
+    frame = pd.DataFrame(
+        [
+            {
+                "player": "A",
+                "rank": 1,
+                "elo": bad_elo,
+                "as_of_date": "2025-01-01",
+            }
+        ]
+    )
+    monkeypatch.setattr(pd, "read_feather", lambda _: frame.copy())
+    with pytest.raises(ValueError, match="Player Elo ratings must be within"):
+        load_player_stats("stats.feather")
 
 
 def test_model_bundle_type_validation(monkeypatch, tmp_path):

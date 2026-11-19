@@ -13,6 +13,7 @@ from acebet.app.runtime import PredictionAssets
 from acebet.app.dependencies.data_models import (
     PREDICTION_CONTEXT_ALLOWED_VALUES,
     ModelIdentity,
+    PredictionDomainErrorResponse,
     PredictionRequest,
 )
 from acebet.app.dependencies.auth import (
@@ -1287,6 +1288,54 @@ def test_phase4_negative_snapshot_ages_return_every_affected_player(
             },
         }
     }
+
+
+def test_stale_snapshots_report_affected_players_and_limit(
+    configured_auth_settings, monkeypatch, tmp_path
+):
+    log_path = tmp_path / "acebet.log"
+    monkeypatch.setenv("ACEBET_LOG_FORMAT", "json")
+    monkeypatch.setenv("ACEBET_LOG_FILE", str(log_path))
+    monkeypatch.setenv("ACEBET_MAX_SNAPSHOT_AGE_DAYS", "2")
+
+    with TestClient(app) as client:
+        install_phase4_assets(client)
+        token = client.post(
+            "/token", data={"username": "johndoe", "password": "secret"}
+        )
+        headers = {"Authorization": f"Bearer {token.json()['access_token']}"}
+        response = client.post(
+            "/predict/testing",
+            headers=headers,
+            json=phase4_payload(date="2026-01-12"),
+        )
+        at_limit = client.post(
+            "/predict/testing", headers=headers, json=phase4_payload()
+        )
+
+    context = {
+        "match_date": "2026-01-12",
+        "max_age_days": 2,
+        "affected_players": [
+            {
+                "player": "Player Two",
+                "role": "p2",
+                "as_of_date": "2026-01-08",
+                "age_days": 4,
+            }
+        ],
+    }
+    assert response.status_code == 422
+    detail = PredictionDomainErrorResponse.model_validate(response.json()).detail
+    assert detail.code == "stale_snapshots"
+    assert detail.context.model_dump(mode="json") == context
+    assert at_limit.status_code == 200
+    logs = [json.loads(line) for line in log_path.read_text().splitlines()]
+    rejection = next(
+        log for log in logs if log["event"] == "prediction_domain_rejected"
+    )
+    assert rejection["code"] == "stale_snapshots"
+    assert rejection["context"] == context
 
 
 @pytest.mark.parametrize("expected_error", [KeyError("feature"), ValueError("score")])

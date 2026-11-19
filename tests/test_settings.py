@@ -9,6 +9,7 @@ import os
 
 import pytest
 import structlog
+import uvicorn
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -265,6 +266,25 @@ def test_configure_logging_emits_json_with_request_context(tmp_path):
     assert payload["request_id"] == "req-123"
 
 
+@pytest.mark.parametrize("access_log", [True, False])
+def test_configure_logging_respects_uvicorn_access_log_setting(
+    monkeypatch, tmp_path, access_log
+):
+    access_logger = logging.getLogger("uvicorn.access")
+    monkeypatch.setattr(access_logger, "handlers", [logging.StreamHandler()])
+    monkeypatch.setattr(access_logger, "propagate", False)
+    monkeypatch.setattr(access_logger, "level", logging.INFO)
+    uvicorn.Config(app, log_config=None, access_log=access_log)
+    stream = io.StringIO()
+    configure_logging(
+        AppSettings(log_format="json", _secrets_dir=tmp_path), stream=stream
+    )
+
+    assert access_logger.hasHandlers() is access_log
+    access_logger.info("access log test")
+    assert ("access log test" in stream.getvalue()) is access_log
+
+
 @pytest.mark.tracing
 @requires_tracing
 def test_build_span_exporter_uses_console_by_default(tmp_path):
@@ -385,11 +405,14 @@ def test_lifespan_tracing_exports_http_spans_and_restarts(monkeypatch):
     ("field", "value"),
     [
         ("env", "staging"),
+        ("log_level", "VERBOSE"),
         ("log_format", "xml"),
         ("trace_exporter", "zipkin"),
         ("jwt_algorithm", "none"),
         ("access_token_expire_minutes", 0),
         ("access_token_expire_minutes", -1),
+        ("max_snapshot_age_days", 0),
+        ("max_snapshot_age_days", -5),
         ("service_name", "   "),
     ],
 )
@@ -504,3 +527,77 @@ def test_http_method_metrics_have_bounded_shared_labels(method, path):
     if label == "OTHER":
         metrics = observability.render_metrics()[0].decode()
         assert f'method="{method}"' not in metrics
+
+
+@pytest.mark.parametrize(
+    "bad_secret",
+    [
+        "short-key",
+        "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7",
+    ],
+)
+def test_production_rejects_short_or_tutorial_jwt_signing_key(monkeypatch, bad_secret):
+    monkeypatch.setenv("ACEBET_ENV", "production")
+    monkeypatch.setenv("ACEBET_DEMO_PASSWORD", "production-password")
+    monkeypatch.setenv("ACEBET_SECRET_KEY", bad_secret)
+    get_settings.cache_clear()
+
+    with pytest.raises(RuntimeError, match="ACEBET_SECRET_KEY must be at least 16"):
+        get_jwt_signing_key()
+
+
+@pytest.mark.parametrize(
+    ("inbound_id", "accepted"),
+    [
+        ("req-123_abc.456", True),
+        ("bad\r\nheader: injected", False),
+        ("\x1b[31mansi\x1b[0m", False),
+        ("a" * 129, False),
+        ("", False),
+    ],
+)
+def test_request_id_sanitizes_untrusted_header_values(inbound_id, accepted):
+    from starlette.requests import Request
+    from acebet.app.observability import get_request_id
+
+    scope = {
+        "type": "http",
+        "headers": [(b"x-request-id", inbound_id.encode("latin-1"))],
+    }
+    resolved = get_request_id(Request(scope))
+    if accepted:
+        assert resolved == inbound_id
+    else:
+        assert resolved != inbound_id
+        assert len(resolved) == 36
+
+
+def test_jwt_without_exp_claim_is_rejected(monkeypatch):
+    from jose import jwt
+    from starlette.requests import Request
+    from acebet.app.dependencies.auth import get_prediction_rate_limit_key
+
+    monkeypatch.setenv("ACEBET_SECRET_KEY", "test-signing-secret-with-16-chars")
+    monkeypatch.setenv("ACEBET_ENV", "test")
+    get_settings.cache_clear()
+    token_without_exp = jwt.encode(
+        {"sub": "johndoe"},
+        get_jwt_signing_key(),
+        algorithm="HS256",
+    )
+
+    with TestClient(create_app()) as client:
+        response = client.get(
+            "/users/me",
+            headers={"Authorization": f"Bearer {token_without_exp}"},
+        )
+    assert response.status_code == 401
+
+    scope = {
+        "type": "http",
+        "client": ("127.0.0.1", 12345),
+        "headers": [
+            (b"authorization", f"Bearer {token_without_exp}".encode("ascii")),
+        ],
+    }
+    assert get_prediction_rate_limit_key(Request(scope)) == "ip:127.0.0.1"

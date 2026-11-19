@@ -11,7 +11,12 @@ import pandas as pd
 from joblib import load
 from sklearn.utils.validation import check_is_fitted
 
-from acebet.app.dependencies.data_models import FeatureFreshness, ModelIdentity
+from acebet.app.dependencies.data_models import (
+    FeatureFreshness,
+    ModelIdentity,
+    SnapshotPlayer,
+    StaleSnapshotsContext,
+)
 from acebet.features import (
     FeatureContractPipeline,
     PLAYER_STATS_COLUMNS,
@@ -51,7 +56,7 @@ class PlayerSnapshot:
 
 
 class AffectedPlayer(TypedDict):
-    """Typed details for one future-dated feature snapshot."""
+    """Typed details for one feature snapshot."""
 
     player: str
     role: Literal["p1", "p2"]
@@ -76,6 +81,16 @@ class NegativeSnapshotAgeError(ValueError):
         super().__init__("Player snapshots must not postdate the match.")
         self.match_date = match_date
         self.affected_players = affected_players
+
+
+class StaleSnapshotsError(ValueError):
+    """Raised when one or more snapshots exceed the configured age limit."""
+
+    def __init__(self, context: StaleSnapshotsContext) -> None:
+        super().__init__(
+            f"Player snapshots exceed the configured maximum age of {context.max_age_days} days."
+        )
+        self.context = context
 
 
 def load_player_stats(player_stats_file: str | Path) -> pd.DataFrame:
@@ -122,6 +137,8 @@ def load_player_stats(player_stats_file: str | Path) -> pd.DataFrame:
                 )
         if ((df["rank"] <= 0) | (df["rank"] % 1 != 0)).any():
             raise ValueError("Player ranks must be positive integers.")
+        if ((df["elo"] <= 0) | (df["elo"] > 5000)).any():
+            raise ValueError("Player Elo ratings must be within (0, 5000].")
         return df.set_index("player", drop=False).sort_index()
     except FileNotFoundError:
         raise FileNotFoundError(
@@ -267,8 +284,10 @@ def calculate_feature_freshness(
     match_date: date,
     p1_snapshot: PlayerSnapshot,
     p2_snapshot: PlayerSnapshot,
+    *,
+    max_age_days: int | None = None,
 ) -> FeatureFreshness:
-    """Calculate calendar-day snapshot ages and reject future snapshots."""
+    """Calculate calendar-day snapshot ages and reject future or overly stale snapshots."""
     snapshots: tuple[tuple[Literal["p1", "p2"], PlayerSnapshot], ...] = (
         ("p1", p1_snapshot),
         ("p2", p2_snapshot),
@@ -276,7 +295,7 @@ def calculate_feature_freshness(
     ages = {
         role: (match_date - snapshot.as_of_date).days for role, snapshot in snapshots
     }
-    affected_players: list[AffectedPlayer] = [
+    snapshot_details: list[AffectedPlayer] = [
         {
             "player": snapshot.player,
             "role": role,
@@ -284,10 +303,24 @@ def calculate_feature_freshness(
             "age_days": ages[role],
         }
         for role, snapshot in snapshots
-        if ages[role] < 0
     ]
-    if affected_players:
-        raise NegativeSnapshotAgeError(match_date, affected_players)
+    future_players = [player for player in snapshot_details if player["age_days"] < 0]
+    if future_players:
+        raise NegativeSnapshotAgeError(match_date, future_players)
+    if max_age_days is not None:
+        stale_players = [
+            SnapshotPlayer(**player)
+            for player in snapshot_details
+            if player["age_days"] > max_age_days
+        ]
+        if stale_players:
+            raise StaleSnapshotsError(
+                StaleSnapshotsContext(
+                    match_date=match_date,
+                    max_age_days=max_age_days,
+                    affected_players=stale_players,
+                )
+            )
     return FeatureFreshness(
         p1_as_of_date=p1_snapshot.as_of_date,
         p2_as_of_date=p2_snapshot.as_of_date,

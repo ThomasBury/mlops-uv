@@ -281,7 +281,8 @@ def test_ci_permissions_action_pins_and_dependabot_contract():
 
     assert "package-ecosystem: github-actions" in dependabot
     assert "package-ecosystem: docker" in dependabot
-    assert dependabot.count("interval: weekly") == 2
+    assert "package-ecosystem: uv" in dependabot
+    assert dependabot.count("interval: weekly") == 3
 
 
 def test_notebook_dependencies_are_development_only():

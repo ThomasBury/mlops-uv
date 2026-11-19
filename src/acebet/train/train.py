@@ -92,7 +92,12 @@ class TrainingResult:
 
 
 def get_lgb_params() -> dict[str, int | float | str | bool]:
-    """Return deterministic hyperparameters for the LightGBM classifier."""
+    """Return deterministic hyperparameters for the LightGBM classifier.
+
+    These values are frozen from a prior tutorial tuning pass and kept fixed
+    across runs so candidate comparisons remain strictly reproducible without
+    an inner hyperparameter search loop.
+    """
     return {
         "objective": "binary",
         "metric": "binary_logloss",
@@ -413,9 +418,10 @@ def write_model_card(exported_model_path: Path, metadata: dict[str, Any]) -> Pat
         )
     lines += [
         "",
-        "## Evaluation Results",
+        "## Evaluation Results (Selection Holdout)",
         "",
-        "Learned candidates must improve unrounded log loss over constant by at least 0.005. "
+        "Metrics below come from the date-grouped selection holdout; no separate post-selection test partition is used. "
+        "Non-constant candidates must improve unrounded log loss over constant by at least 0.005. "
         "LightGBM replaces a servable Elo model only when it improves unrounded log loss by at least 0.005.",
         "",
         f"- Selected model kind: `{identity['kind']}`",
