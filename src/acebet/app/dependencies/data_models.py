@@ -25,12 +25,6 @@ class Token(BaseModel):
     token_type: str
 
 
-class TokenData(BaseModel):
-    """Decoded token subject."""
-
-    username: str | None = None
-
-
 class User(BaseModel):
     """Public user information."""
 
@@ -213,12 +207,18 @@ class UnsupportedContextValuesContext(BaseModel):
     invalid_fields: list[UnsupportedContextValue]
 
 
-class NegativeSnapshotPlayer(BaseModel):
-    """One player snapshot newer than the requested match date."""
+class SnapshotPlayer(BaseModel):
+    """Identity and age of a player snapshot."""
 
     player: str
     role: Literal["p1", "p2"]
     as_of_date: date
+    age_days: int
+
+
+class NegativeSnapshotPlayer(SnapshotPlayer):
+    """One player snapshot newer than the requested match date."""
+
     age_days: int = Field(lt=0)
 
 
@@ -227,6 +227,14 @@ class NegativeSnapshotAgeContext(BaseModel):
 
     match_date: date
     affected_players: list[NegativeSnapshotPlayer]
+
+
+class StaleSnapshotsContext(BaseModel):
+    """Context for snapshots older than the configured limit."""
+
+    match_date: date
+    max_age_days: int = Field(gt=0)
+    affected_players: list[SnapshotPlayer]
 
 
 class PredictionFailedContext(BaseModel):
@@ -267,6 +275,14 @@ class NegativeSnapshotAgeError(BaseModel):
     context: NegativeSnapshotAgeContext
 
 
+class StaleSnapshotsError(BaseModel):
+    """Stale-snapshot prediction-domain error."""
+
+    code: Literal["stale_snapshots"]
+    message: str
+    context: StaleSnapshotsContext
+
+
 class PredictionFailedError(BaseModel):
     """Expected feature/scoring prediction-domain error."""
 
@@ -280,6 +296,7 @@ PredictionDomainError = (
     | UnknownPlayersError
     | UnsupportedContextValuesError
     | NegativeSnapshotAgeError
+    | StaleSnapshotsError
     | PredictionFailedError
 )
 

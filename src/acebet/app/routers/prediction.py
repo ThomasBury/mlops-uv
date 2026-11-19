@@ -15,6 +15,7 @@ from acebet.app.dependencies.data_models import (
 )
 from acebet.app.dependencies.predict_winner import (
     NegativeSnapshotAgeError,
+    StaleSnapshotsError,
     UnknownPlayerSnapshotsError,
     calculate_feature_freshness,
     make_online_prediction,
@@ -103,7 +104,10 @@ def _predict_match_outcome(
                 assets.player_stats, p1_name, p2_name
             )
             feature_freshness = calculate_feature_freshness(
-                match_date, p1_snapshot, p2_snapshot
+                match_date,
+                p1_snapshot,
+                p2_snapshot,
+                max_age_days=get_settings().max_snapshot_age_days,
             )
             probability, predicted_class = make_online_prediction(
                 model=assets.model,
@@ -145,9 +149,28 @@ def _predict_match_outcome(
                     ],
                 },
             )
-        except (KeyError, ValueError):
+        except StaleSnapshotsError as exc:
+            code = "stale_snapshots"
+            context = exc.context.model_dump(mode="json")
+            _record_prediction_failure(prediction_mode, prediction_start, code)
+            get_request_logger().warning(
+                "prediction_domain_rejected",
+                prediction_mode=prediction_mode,
+                sample_data=sample_data,
+                code=code,
+                context=context,
+            )
+            _raise_prediction_domain_error(code=code, message=str(exc), context=context)
+        except (KeyError, ValueError) as exc:
             _record_prediction_failure(
                 prediction_mode, prediction_start, "prediction_failed"
+            )
+            get_request_logger().warning(
+                "prediction_domain_rejected",
+                prediction_mode=prediction_mode,
+                sample_data=sample_data,
+                code="prediction_failed",
+                error_type=exc.__class__.__name__,
             )
             _raise_prediction_domain_error(
                 code="prediction_failed",

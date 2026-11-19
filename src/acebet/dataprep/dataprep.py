@@ -31,6 +31,8 @@ REQUIRED_NON_NULL_COLUMNS = (
     "target",
 )
 RANK_COLUMNS = ("rank_p1", "rank_p2")
+ELO_COLUMNS = ("elo_p1", "elo_p2")
+MAX_ELO_RATING = 5000.0
 NUMERIC_CONTRACT_COLUMNS = (
     "rank_p1",
     "rank_p2",
@@ -83,8 +85,27 @@ def validate_prepared_data_contract(df: pd.DataFrame) -> pd.DataFrame:
     if (numeric_values.loc[:, RANK_COLUMNS] % 1 != 0).any().any():
         raise ValueError("Prepared dataset rank columns must be integral.")
 
+    if (
+        (
+            (numeric_values.loc[:, ELO_COLUMNS] <= 0)
+            | (numeric_values.loc[:, ELO_COLUMNS] > MAX_ELO_RATING)
+        )
+        .any()
+        .any()
+    ):
+        raise ValueError("Prepared dataset Elo columns must be within (0, 5000].")
+
     if not numeric_values["proba_elo"].between(0, 1).all():
         raise ValueError("Prepared dataset proba_elo must be within [0, 1].")
+
+    elo = numeric_values.loc[:, ELO_COLUMNS].astype(float)
+    expected_proba = 1.0 / (1.0 + 10.0 ** ((elo["elo_p2"] - elo["elo_p1"]) / 400.0))
+    if not np.allclose(
+        numeric_values["proba_elo"], expected_proba, rtol=0.0, atol=1e-6
+    ):
+        raise ValueError(
+            "Prepared dataset proba_elo must match the Elo win probability formula."
+        )
 
     target = validated["target"]
     if not pd.api.types.is_bool_dtype(target):

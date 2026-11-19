@@ -133,8 +133,8 @@ def authenticate_user(
 
     Returns
     -------
-    Union[UserInDB, bool]
-        User information if authenticated, False otherwise.
+    UserInDB | None
+        User information if authenticated, None otherwise.
     """
     user = get_user(fake_db, username)
     if user is None:
@@ -163,13 +163,15 @@ def create_access_token(
     str
         The access token.
     """
+    settings = get_settings()
     to_encode = dict(data)
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.access_token_expire_minutes
+        )
     to_encode.update({"exp": expire})
-    settings = get_settings()
     encoded_jwt = jwt.encode(
         to_encode,
         get_jwt_signing_key(),
@@ -203,6 +205,7 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
             token,
             get_jwt_signing_key(),
             algorithms=[settings.jwt_algorithm],
+            options={"require_exp": True},
         )
         username = payload.get("sub")
         if not isinstance(username, str) or not username:
@@ -247,6 +250,7 @@ def get_prediction_rate_limit_key(request: Request) -> str:
                 token,
                 get_jwt_signing_key(),
                 algorithms=[settings.jwt_algorithm],
+                options={"require_exp": True},
             )
         except (JWTError, RuntimeError):
             pass

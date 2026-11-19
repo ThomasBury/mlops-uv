@@ -1,6 +1,8 @@
 .git
 .github/
 .agents/
+.aws/
+.cache/
 .codex/
 .kilo/
 
@@ -12,6 +14,8 @@
 __pycache__/
 *.py[cod]
 *.log
+*.db
+mlflow.db
 .coverage
 .mypy_cache/
 .pytest_cache/
@@ -28,5 +32,3 @@ dist/
 /models/
 /mlruns/
 /mlartifacts/
-
-tennis-unsplash.jpg

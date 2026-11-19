@@ -7,6 +7,8 @@ from contextlib import AbstractContextManager, nullcontext
 from importlib import import_module
 import io
 import logging
+from logging.handlers import RotatingFileHandler
+import re
 import time
 from types import ModuleType
 from typing import Any, Protocol, cast
@@ -175,7 +177,12 @@ def configure_logging(
     root_logger.setLevel(settings.log_level)
 
     if settings.log_file:
-        handler = logging.FileHandler(settings.log_file)
+        handler = RotatingFileHandler(
+            settings.log_file,
+            maxBytes=10_000_000,
+            backupCount=3,
+            encoding="utf-8",
+        )
     else:
         handler = logging.StreamHandler(stream)
     handler.setFormatter(
@@ -190,6 +197,12 @@ def configure_logging(
         )
     )
     root_logger.addHandler(handler)
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uv_logger = logging.getLogger(logger_name)
+        if logger_name == "uvicorn.access" and not uv_logger.hasHandlers():
+            continue
+        uv_logger.handlers.clear()
+        uv_logger.propagate = True
 
 
 def validate_trace_exporter_settings(settings: AppSettings) -> None:
@@ -298,9 +311,15 @@ def shutdown_tracing(app: FastAPI) -> None:
                 _TRACE_API = None
 
 
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+
 def get_request_id(request: Request) -> str:
-    """Return the inbound request ID or generate a new one."""
-    return request.headers.get("X-Request-ID") or str(uuid4())
+    """Return a validated inbound request ID or generate a new one."""
+    inbound = request.headers.get("X-Request-ID")
+    if inbound is not None and REQUEST_ID_PATTERN.fullmatch(inbound):
+        return inbound
+    return str(uuid4())
 
 
 def resolve_metric_path(request: Request) -> str:

@@ -60,7 +60,7 @@ def _valid_prepared_df() -> pd.DataFrame:
                 "rank_p2": 20,
                 "elo_p1": 1700.0,
                 "elo_p2": 1600.0,
-                "proba_elo": 0.64,
+                "proba_elo": elo_win_probability(1700.0, 1600.0),
                 "target": True,
             }
         ]
@@ -340,3 +340,34 @@ def test_raw_equal_set_counts_reject_without_replacing_output(tmp_path, sets):
     with pytest.raises(ValueError, match="equal set counts have no winner"):
         build_prepared_dataset(input_path, output_path)
     assert output_path.read_bytes() == b"previous output"
+
+
+@pytest.mark.parametrize("column", ["elo_p1", "elo_p2"])
+@pytest.mark.parametrize("bad_elo", [0.0, -100.0, 5000.1])
+def test_prepare_data_rejects_out_of_bounds_elo_ratings(tmp_path, column, bad_elo):
+    prepared = _valid_prepared_df()
+    prepared.loc[0, column] = bad_elo
+    with pytest.raises(ValueError, match="Elo columns must be within"):
+        prepare_data(_write_prepared(tmp_path, prepared))
+
+
+def test_prepare_data_rejects_inconsistent_proba_elo(tmp_path):
+    prepared = _valid_prepared_df()
+    prepared.loc[0, "proba_elo"] = 0.25
+    with pytest.raises(
+        ValueError, match="proba_elo must match the Elo win probability formula"
+    ):
+        prepare_data(_write_prepared(tmp_path, prepared))
+
+
+def test_prepare_data_accepts_unsigned_elo_ratings(tmp_path):
+    prepared = _valid_prepared_df().astype({"elo_p1": "uint16", "elo_p2": "uint16"})
+
+    result = prepare_data(_write_prepared(tmp_path, prepared))
+
+    assert result.loc[0, "proba_elo"] == prepared.loc[0, "proba_elo"]
+
+
+def test_elo_win_probability_handles_extreme_rating_gaps_without_overflow():
+    assert elo_win_probability(0.0, 1_000_000.0) == 0.0
+    assert elo_win_probability(1_000_000.0, 0.0) == 1.0

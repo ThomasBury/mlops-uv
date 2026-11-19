@@ -136,15 +136,15 @@ def compute_selection(candidates: Mapping[str, Any]) -> dict[str, Any]:
     )
     if not elo_servable and not lightgbm_servable:
         status, selected, code = "failed", None, "no_candidate_beats_constant"
-        reason = "Neither learned candidate beats constant log loss by the required 0.005 margin."
+        reason = "Neither non-constant candidate beats constant log loss by the required 0.005 margin."
     elif elo_servable and not lightgbm_servable:
         status, selected, code = "selected", "elo_baseline", "elo_only_servable"
-        reason = "Elo is the only learned candidate that beats the constant baseline."
+        reason = (
+            "Elo is the only non-constant candidate that beats the constant baseline."
+        )
     elif lightgbm_servable and not elo_servable:
         status, selected, code = "selected", "lightgbm", "lightgbm_only_servable"
-        reason = (
-            "LightGBM is the only learned candidate that beats the constant baseline."
-        )
+        reason = "LightGBM is the only non-constant candidate that beats the constant baseline."
     elif _margin_met(
         deltas["elo_minus_lightgbm_log_loss"], LIGHTGBM_VS_ELO_LOG_LOSS_MARGIN
     ):
@@ -333,7 +333,13 @@ def validate_model_metadata(
             raise ValueError(f"Candidate '{name}' servability flag is inconsistent.")
     if not isinstance(candidates["lightgbm"].get("parameters"), Mapping):
         raise ValueError("LightGBM candidate parameters are missing.")
-    if metadata["selection"] != recomputed:
+    selection = metadata["selection"]
+    # The reason is display text and may differ across schema-v2 exports.
+    if (
+        not isinstance(selection, Mapping)
+        or not isinstance(selection.get("reason"), str)
+        or {**selection, "reason": recomputed["reason"]} != recomputed
+    ):
         raise ValueError(
             "Recorded model selection does not match selection recomputed from candidate metrics."
         )
