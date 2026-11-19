@@ -1104,12 +1104,14 @@ def test_phase4_ordinary_malformed_fields_keep_native_validation(
     assert isinstance(response.json()["detail"], list)
 
 
-@pytest.mark.parametrize("best_of", [4, "3", 3.5, True, None])
+@pytest.mark.parametrize("best_of", [4, "3", 3.5, True, None, [3], {"value": 3}])
 def test_best_of_errors_have_one_domain_shape(best_of, client, auth_headers):
     response = client.post(
         "/predict/testing", headers=auth_headers, json=phase4_payload(best_of=best_of)
     )
     assert response.status_code == 422
+    decoded = PredictionDomainErrorResponse.model_validate_json(response.content)
+    assert decoded.model_dump(mode="json") == response.json()
     detail = response.json()["detail"]
     assert detail["code"] == "unsupported_context_values"
     assert detail["context"]["invalid_fields"] == [

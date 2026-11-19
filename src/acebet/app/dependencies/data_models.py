@@ -10,6 +10,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     StringConstraints,
     ValidationInfo,
     field_validator,
@@ -197,7 +198,7 @@ class UnsupportedContextValue(BaseModel):
     """One rejected match-context value."""
 
     field: Literal["series", "court", "surface", "round", "best_of"]
-    submitted_value: str | int
+    submitted_value: JsonValue
     allowed_values: list[str | int]
 
 
