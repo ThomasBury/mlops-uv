@@ -185,13 +185,13 @@ def summarize_elo_causal_evidence(df: pd.DataFrame) -> dict[str, float | int]:
             & np.isfinite(odds["ps_p1"])
             & np.isfinite(odds["ps_p2"])
         ]
-        if len(odds) >= 2 and odds["target"].nunique() == 2:
+        summary["pinnacle_odds_rows"] = len(odds)
+        if not odds.empty:
             inv_p1 = 1.0 / odds["ps_p1"].to_numpy(dtype=float)
             inv_p2 = 1.0 / odds["ps_p2"].to_numpy(dtype=float)
             pinnacle_proba = inv_p1 / (inv_p1 + inv_p2)
             elo_proba = odds["proba_elo"].to_numpy(dtype=float)
             y_true = odds["target"].to_numpy(dtype=int)
-            summary["pinnacle_odds_rows"] = int(len(odds))
             summary["elo_log_loss_on_odds_subset"] = float(
                 log_loss(y_true, elo_proba, labels=[0, 1])
             )

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from math import log
 import sys
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from acebet.dataprep.dataprep import prepare_data
+from acebet.dataprep.dataprep import prepare_data, summarize_elo_causal_evidence
 from acebet.dataprep.raw_to_prepared import (
     PREPARED_COLUMN_ORDER,
     REQUIRED_RAW_COLUMNS,
@@ -374,8 +375,6 @@ def test_elo_win_probability_handles_extreme_rating_gaps_without_overflow():
 
 
 def test_summarize_elo_causal_evidence_verifies_transitions_and_odds_alignment():
-    from acebet.dataprep.dataprep import summarize_elo_causal_evidence
-
     df = prepare_data()
     evidence = summarize_elo_causal_evidence(df)
 
@@ -390,3 +389,20 @@ def test_summarize_elo_causal_evidence_verifies_transitions_and_odds_alignment()
         < evidence["elo_log_loss_on_odds_subset"]
     )
     assert evidence["elo_pinnacle_probability_correlation"] > 0.85
+
+
+@pytest.mark.parametrize("valid_rows", [1, 2])
+def test_elo_probe_counts_and_scores_single_class_odds(valid_rows):
+    valid = _valid_prepared_df().assign(ps_p1=1.5, ps_p2=3.0)
+    matches = pd.concat(
+        [valid] * valid_rows + [valid.assign(ps_p1=1.0)], ignore_index=True
+    )
+
+    evidence = summarize_elo_causal_evidence(matches)
+
+    assert evidence["pinnacle_odds_rows"] == valid_rows
+    assert evidence["elo_log_loss_on_odds_subset"] == pytest.approx(
+        -log(elo_win_probability(1700.0, 1600.0))
+    )
+    assert evidence["pinnacle_log_loss_on_odds_subset"] == pytest.approx(-log(2 / 3))
+    assert "elo_pinnacle_probability_correlation" not in evidence
