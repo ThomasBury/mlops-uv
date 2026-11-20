@@ -12,6 +12,7 @@ export ACEBET_DEMO_USERNAME := env_var_or_default("ACEBET_DEMO_USERNAME", "johnd
 export ACEBET_DEMO_PASSWORD := env_var_or_default("ACEBET_DEMO_PASSWORD", "secret")
 docker_image := "acebet"
 docker_host_port := env_var_or_default("ACEBET_DOCKER_PORT", "8000")
+forecast_uv := "uv run --locked --python 3.12 --group mlops --extra tracing"
 predict_payload := "{\"p1_name\":\"Fognini F.\",\"p2_name\":\"Jarry N.\",\"date\":\"2018-03-04\",\"series\":\"ATP250\",\"court\":\"Indoor\",\"surface\":\"Clay\",\"round\":\"The Final\",\"best_of\":3}"
 
 # Running just with no arguments lists all available recipes. @ suppresses echoing the command itself.
@@ -59,6 +60,35 @@ data-build raw_input output_path: setup
     uv run python -m acebet.dataprep.raw_to_prepared \
         --input-path "{{raw_input}}" \
         --output-path "{{output_path}}"
+# Builds canonical history from the pinned tutorial snapshot.
+forecast-prepare $results:
+    {{forecast_uv}} python -m acebet.dataprep.historical_results data/raw/valuebetennis-2021-atp.csv "$results"
+# Freezes the temporal search and fitted candidate in a new bundle directory.
+forecast-train $results $bundle:
+    {{forecast_uv}} python -m acebet.train.historical_evaluation train "$results" "$bundle"
+# Scores the frozen candidate and baselines on the archive's final fixtures.
+forecast-evaluate $results $bundle:
+    {{forecast_uv}} python -m acebet.train.historical_evaluation evaluate "$results" "$bundle"
+# Checks cutoff behavior, evaluation, HTTP parity, monitoring, and rollback.
+forecast-test:
+    {{forecast_uv}} pytest tests/test_forecast.py tests/test_historical_pipeline.py tests/test_historical_evaluation.py tests/test_historical_serving.py
+# Serves a trusted frozen bundle and its matching history on localhost.
+forecast-serve $results $bundle $port="8000":
+    ACEBET_FORECAST_RESULTS="$results" ACEBET_FORECAST_BUNDLE="$bundle" \
+        {{forecast_uv}} uvicorn acebet.app.historical:create_app --factory --host 127.0.0.1 --port "$port"
+# Builds and reviews a candidate in a new run directory.
+forecast-candidate $forecast_run:
+    mkdir -- "$forecast_run"
+    just forecast-prepare "$forecast_run/matches.parquet" > "$forecast_run/preparation.json"
+    just forecast-train "$forecast_run/matches.parquet" "$forecast_run/bundle" > /dev/null
+    just forecast-evaluate "$forecast_run/matches.parquet" "$forecast_run/bundle" > /dev/null
+    {{forecast_uv}} python -m acebet.historical_monitoring review \
+        "$forecast_run/matches.parquet" "$forecast_run/bundle" > "$forecast_run/validation.json"
+    cat -- "$forecast_run/validation.json"
+# Explicitly approves a reviewed candidate if it passes the Elo gate.
+forecast-promote $forecast_run:
+    {{forecast_uv}} python -m acebet.historical_monitoring promote \
+        "$forecast_run/matches.parquet" "$forecast_run/bundle"
 # Rebuilds and validates the committed raw sample in a temporary directory.
 data-check-sample: setup
     #!/usr/bin/env bash

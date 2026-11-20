@@ -10,6 +10,16 @@ hide:
 Give a colleague a running tennis predictor. Show which model answered a
 request and explain what you would inspect if the result looked wrong.
 
+The [forecast contract exercise](./forecast-contract.md) asks what a pre-match
+probability should mean and which information it may use. It runs by hand
+and with Python's standard library. Then [replay the same fixture from an
+installed package](./reproduce-the-fixture.md) and [rebuild the match history
+available at its cutoff](./rebuild-match-history.md). Use that history to
+[test whether a fitted model improves on Elo](./evaluate-a-forecast.md) and
+[serve the frozen forecast offline, over HTTP, and in Docker](./serve-the-frozen-forecast.md).
+Then [diagnose a slow request, score delayed results, and rehearse rollback](./diagnose-and-roll-back-a-forecast.md).
+Finish by [automating the candidate run and auditing its evidence](./automate-and-audit-a-forecast.md).
+
 For example, here are three fields from a response for Fognini against Jarry.
 The packaged default supplies this example. Your own export will have a
 different version.
@@ -35,9 +45,9 @@ different version.
 Install Git, Python 3.12, `uv`, `just`, and `curl`. Use a fresh checkout of
 the [AceBet repository](https://github.com/ThomasBury/mlops-uv). The commands
 assume a Unix-style shell and start from the repository root.
-You will need a running Docker engine only for lesson 9 and the live
-container check in lesson 10. Port 8000 needs to be free for the local API
-and, later, the container.
+You will need a running Docker engine for the frozen forecast exercise,
+lesson 9, and the live container check in lesson 10. Port 8000 needs to be
+free for the local API and, later, the container in the ten-lesson walkthrough.
 
 ## Read in order { #read-in-order }
 
