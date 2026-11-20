@@ -12,7 +12,7 @@ AceBet has a main validation workflow and one documentation workflow.
 Python 3.10, 3.11, and 3.12 each run:
 
 ```bash
-uv sync --locked --dev
+uv sync --locked --dev --group mlops
 uv run ruff check src tests
 uv run ruff format --check src tests
 uv run ty check
@@ -21,8 +21,8 @@ uv run pytest tests -m "not (api or tracing or packaging)"
 
 Python 3.12 uploads unit branch coverage. A dependent 3.12 integration job
 runs the temporary data/feature checks, non-exporting selection, and
-`just notebook-check`; installs tracing with
-`uv sync --locked --dev --extra tracing`; then runs API, tracing, packaging,
+`just notebook-check`; installs the forecast and tracing dependencies with
+`uv sync --locked --dev --group mlops --extra tracing`; then runs API, tracing, packaging,
 wheel, sdist, and isolated-install tests.
 
 Unit and integration coverage are combined. CI enforces at least 80% overall

@@ -81,16 +81,19 @@ which imports from `src/` so the existing training tests can locate the
 checkout's data. Install `just` and `curl` for the existing recipe checks.
 
 ```bash
-uv sync --locked --python 3.12 --extra tracing
+uv sync --locked --python 3.12 --group mlops --extra tracing
 .venv/bin/ruff check src tests
 .venv/bin/ruff format --check src tests
-.venv/bin/pytest tests
+.venv/bin/ty check
+.venv/bin/pytest -rs tests
 ```
 
 The unit test uses `0.70` so reversing the player order exposes a broken
 complement. The distribution tests run the installed command from a temporary
 directory for both the wheel and the source distribution. Compare the command
 output with M1's hand-worked fixture before moving on.
+The full suite uses the `mlops` group for MLflow and the `tracing` extra for
+OpenTelemetry. Read any skip reasons before claiming those checks ran.
 
 **Finish when** you can explain the failed import, point to the installed
 module, and recover `F01` and `0.50` from outside the checkout. Keep the

@@ -26,8 +26,8 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
           python-version: ${{ matrix.python-version }}
-      - name: Install core and development dependencies
-        run: uv sync --locked --dev
+      - name: Install development and forecast dependencies
+        run: uv sync --locked --dev --group mlops
       - name: Ruff lint
         run: uv run ruff check src tests
       - name: Ruff format check
@@ -78,8 +78,8 @@ jobs:
         run: just data-check-sample feature-state-check train-check
       - name: Execute tutorial notebook without modifying it
         run: just notebook-check
-      - name: Install the tracing extra
-        run: uv sync --locked --dev --extra tracing
+      - name: Install forecast and tracing dependencies
+        run: uv sync --locked --dev --group mlops --extra tracing
       - name: Run integration, API, tracing, and packaging tests
         run: >-
           uv run pytest tests

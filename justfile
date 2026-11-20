@@ -21,27 +21,27 @@ default:
 # Installs/syncs Python dependencies using uv
 setup:
     uv sync --locked
-# Runs the complete suite with the optional tracing runtime available.
+# Runs the complete suite with forecast and tracing dependencies.
 test:
-    uv sync --locked --extra tracing
+    uv sync --locked --group mlops --extra tracing
     uv run pytest tests
 # Runs the Python-version matrix subset without optional integrations.
 unit-test: setup
     uv run pytest tests -m "not (api or tracing or packaging)"
 # Runs the Python 3.12 integration subset.
 integration-test:
-    uv sync --locked --extra tracing
+    uv sync --locked --group mlops --extra tracing
     uv run pytest tests -m "api or tracing or packaging"
 # Runs static checks used by CI.
 lint: setup
     uv run ruff check src tests
 format-check: setup
     uv run ruff format --check src tests
-typecheck: setup
-    uv run ty check
+typecheck:
+    uv run --locked --group mlops ty check
 # Enforces overall and critical-module branch coverage.
 coverage:
-    uv sync --locked --extra tracing
+    uv sync --locked --group mlops --extra tracing
     uv run pytest tests --cov=src/acebet --cov-branch
     uv run coverage report --fail-under=100 \
         --include='src/acebet/model_artifacts.py,src/acebet/app/main.py,src/acebet/app/routers/prediction.py,src/acebet/app/dependencies/predict_winner.py'
@@ -319,7 +319,7 @@ review:
     echo "== Ruff format =="
     uv run ruff format --check src tests
     echo "== ty =="
-    uv run ty check
+    just --quiet typecheck
     echo "== notebook =="
     just --quiet notebook-check
     echo "== docs =="

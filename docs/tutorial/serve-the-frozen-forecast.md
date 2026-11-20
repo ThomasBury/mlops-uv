@@ -159,7 +159,7 @@ process with Ctrl+C. The tests repeat the exercise with mismatched history
 and a changed feature contract.
 
 ```bash
-uv run --locked --group mlops pytest -q tests/test_historical_serving.py
+uv run --locked --group mlops --extra tracing pytest -q tests/test_historical_serving.py
 ```
 
 ## Measure a blocked event loop
