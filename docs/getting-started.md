@@ -8,22 +8,14 @@ description: Install the locked environment, run the API, and use the non-mutati
 Use this guide to try the packaged model or run maintainer checks. To train
 and serve your own bundle, start with the [ten-lesson tutorial](./tutorial/index.md).
 
-Install Python `>=3.10,<3.13`, `uv`, `just`, and Git. Docker is optional
+Install Python `>=3.10,<3.13`, `uv`, `just`, Git, and `curl`. Docker is optional
 unless you want to run the container smoke.
-
-## What You Are Proving
-
-Install the locked environment, validate the committed inputs and model
-decision, then run the same bundle behind a local API. These checks establish
-agreement within the repository; they do not create a new model or establish
-production readiness.
 
 ## Clean-Clone Setup
 
 ```bash
 uv sync --locked
-cp .env.example .env
-just test
+[ -f .env ] || cp .env.example .env
 ```
 
 `--locked` requires the committed `uv.lock` to match
@@ -48,7 +40,16 @@ tutorial-only insecure signing key. Production must supply
 `ACEBET_SECRET_KEY` and an explicit `ACEBET_DEMO_PASSWORD` of at least 12
 characters. Passwords in every environment must be at most 72 UTF-8 bytes.
 
+Leave the server running. In a second terminal at the repository root, request
+an authenticated prediction from the packaged model.
+
+```bash
+just predict-production
+```
+
 ## Highest-Value Validation
+
+Run the test suite on its own with `just test`, or run the full local gate.
 
 ```bash
 just review

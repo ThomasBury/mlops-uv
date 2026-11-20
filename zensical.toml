@@ -1,5 +1,5 @@
 [project]
-site_name = "Classical MLOps from Notebook to Production"
+site_name = "Classical MLOps and ML Engineering"
 site_url = "https://thomasbury.github.io/mlops-uv/"
 extra_css = ["stylesheets/brand.css"]
 nav = [

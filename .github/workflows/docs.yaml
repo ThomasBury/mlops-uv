@@ -65,3 +65,23 @@ jobs:
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+      - name: Verify public documentation
+        shell: bash
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          base_url="${PAGE_URL%/}"
+          for attempt in {1..6}; do
+            if homepage=$(curl -fsSL --max-time 15 "$base_url/") &&
+              grep -Eq '<meta name="generator" content="zensical-[^"]+">' <<< "$homepage" &&
+              grep -Eq '<h1[^>]*>Start Here</h1>' <<< "$homepage" &&
+              curl -fsSL --max-time 15 "$base_url/tutorial/" | grep -F '<h1 id="tutorial">' >/dev/null &&
+              curl -fsSL --max-time 15 "$base_url/getting-started/" | grep -F '<h1 id="getting-started">' >/dev/null; then
+              exit 0
+            fi
+            echo "Public documentation check failed (attempt $attempt of 6) at $base_url."
+            if [[ $attempt -lt 6 ]]; then
+              sleep 10
+            fi
+          done
+          exit 1

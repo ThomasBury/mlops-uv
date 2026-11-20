@@ -47,6 +47,12 @@ It builds Zensical for relevant pull requests with only read access. Pushes to
 uses the `github-pages` environment and alone receives `pages: write` and
 `id-token: write`. Pages concurrency prevents overlapping deployments.
 
+In the repository settings, open **Pages** and set **Build and deployment →
+Source** to **GitHub Actions**. The deployment job checks the public homepage
+for the Zensical generator and the **Start Here** heading. It also checks that
+the tutorial and setup routes serve their expected pages. The job fails if
+these checks still fail after six attempts.
+
 Every third-party action is pinned to a full commit SHA with its release in a
 comment. Dependabot checks GitHub Actions and Docker references weekly.
 
