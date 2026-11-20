@@ -17,6 +17,7 @@ from acebet.settings import get_jwt_signing_key, get_settings
 from .data_models import UserInDB
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+_DUMMY_PASSWORD_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
 
 
 class UserRecord(TypedDict):
@@ -138,6 +139,7 @@ def authenticate_user(
     """
     user = get_user(fake_db, username)
     if user is None:
+        verify_password(password, _DUMMY_PASSWORD_HASH)
         return None
     if not verify_password(password, user.hashed_password):
         return None
@@ -180,12 +182,17 @@ def create_access_token(
     return encoded_jwt
 
 
-def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
+def get_current_user(
+    request: Request,
+    token: Annotated[str, Depends(oauth2_scheme)],
+) -> UserInDB:
     """
     Decode a bearer token and return the matching tutorial user.
 
     Parameters
     ----------
+    request : Request
+        The active HTTP request.
     token : str
         The JWT token.
 
@@ -215,6 +222,7 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
     user = get_user(get_demo_users_db(), username=username)
     if user is None:
         raise credentials_exception
+    request.state.authenticated_username = user.username
     return user
 
 
@@ -241,6 +249,9 @@ def get_current_active_user(
 
 def get_prediction_rate_limit_key(request: Request) -> str:
     """Return an authenticated-user key for prediction rate limiting."""
+    cached_username = getattr(request.state, "authenticated_username", None)
+    if isinstance(cached_username, str) and cached_username:
+        return f"user:{cached_username}"
     authorization = request.headers.get("Authorization", "")
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() == "bearer" and token:

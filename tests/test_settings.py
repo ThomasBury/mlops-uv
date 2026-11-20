@@ -601,3 +601,90 @@ def test_jwt_without_exp_claim_is_rejected(monkeypatch):
         ],
     }
     assert get_prediction_rate_limit_key(Request(scope)) == "ip:127.0.0.1"
+
+
+def test_player_stats_sha256_setting_normalizes_and_validates(tmp_path):
+    valid_upper = "A" * 64
+    settings = AppSettings(
+        _env_file=None,
+        _secrets_dir=tmp_path,
+        player_stats_sha256=f"  {valid_upper}  ",
+    )
+    assert settings.player_stats_sha256 == "a" * 64
+
+    blank_settings = AppSettings(
+        _env_file=None,
+        _secrets_dir=tmp_path,
+        player_stats_sha256="   ",
+    )
+    assert blank_settings.player_stats_sha256 is None
+
+    with pytest.raises(ValueError):
+        AppSettings(
+            _env_file=None,
+            _secrets_dir=tmp_path,
+            player_stats_sha256="not-a-sha256",
+        )
+
+
+def test_authenticate_user_verifies_dummy_hash_on_unknown_username(monkeypatch):
+    from acebet.app.dependencies import auth as auth_module
+
+    calls: list[tuple[str, str]] = []
+    real_verify = auth_module.verify_password
+
+    def spy_verify(plain: str, hashed: str) -> bool:
+        calls.append((plain, hashed))
+        return real_verify(plain, hashed)
+
+    monkeypatch.setattr(auth_module, "verify_password", spy_verify)
+    assert auth_module.authenticate_user({}, "missing-user", "secret") is None
+    assert calls == [("secret", auth_module._DUMMY_PASSWORD_HASH)]
+
+
+def test_prediction_rate_limit_key_reuses_cached_request_username(monkeypatch):
+    from starlette.requests import Request
+    from acebet.app.dependencies import auth as auth_module
+
+    def fail_decode(*_args, **_kwargs):
+        raise AssertionError("jwt.decode should not run when username is cached")
+
+    monkeypatch.setattr(auth_module.jwt, "decode", fail_decode)
+    request = Request({"type": "http", "headers": [], "client": ("127.0.0.1", 12345)})
+    request.state.authenticated_username = "johndoe"
+    assert auth_module.get_prediction_rate_limit_key(request) == "user:johndoe"
+
+
+def test_trace_context_is_bound_to_each_request(tmp_path):
+    from types import ModuleType, SimpleNamespace
+
+    fake_trace_api = ModuleType("test-trace-api")
+    span_context = SimpleNamespace(is_valid=True, trace_id=1, span_id=2)
+    fake_trace_api.get_current_span = lambda: SimpleNamespace(
+        get_span_context=lambda: span_context
+    )
+    traced_app = FastAPI()
+    untraced_app = FastAPI()
+    traced_app.state.trace_api = fake_trace_api
+
+    disabled_settings = AppSettings(
+        _env_file=None, _secrets_dir=tmp_path, tracing_enabled=False
+    )
+    assert configure_tracing(untraced_app, disabled_settings) is None
+    try:
+        observability.bind_request_context(
+            "traced", "GET", "/", traced_app.state.trace_api
+        )
+        shutdown_tracing(untraced_app)
+        assert observability.add_trace_context(None, "info", {}) == {
+            "trace_id": f"{1:032x}",
+            "span_id": f"{2:016x}",
+        }
+        observability.bind_request_context(
+            "untraced", "GET", "/", untraced_app.state.trace_api
+        )
+        assert observability.add_trace_context(None, "info", {}) == {}
+    finally:
+        observability.clear_request_context()
+        shutdown_tracing(traced_app)
+    assert traced_app.state.trace_api is None

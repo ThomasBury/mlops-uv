@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
 from typing import Literal, TypedDict
 
@@ -39,6 +41,7 @@ class LoadedModelBundle:
     estimator: PredictionEstimator
     identity: ModelIdentity
     artifact_path: Path
+    player_stats_sha256: str | None
 
 
 @dataclass(frozen=True)
@@ -93,7 +96,11 @@ class StaleSnapshotsError(ValueError):
         self.context = context
 
 
-def load_player_stats(player_stats_file: str | Path) -> pd.DataFrame:
+def load_player_stats(
+    player_stats_file: str | Path,
+    *,
+    expected_sha256: str | None = None,
+) -> pd.DataFrame:
     """
     Load the feature-store-lite player state table.
 
@@ -105,6 +112,8 @@ def load_player_stats(player_stats_file: str | Path) -> pd.DataFrame:
     ----------
     player_stats_file : str or Path
         Path to the latest_player_stats.feather file.
+    expected_sha256 : str, optional
+        Expected lowercase SHA-256 digest of the player stats Feather file.
 
     Returns
     -------
@@ -112,40 +121,48 @@ def load_player_stats(player_stats_file: str | Path) -> pd.DataFrame:
         The player stats table with 'as_of_date' converted to datetime.
     """
     try:
-        df = pd.read_feather(player_stats_file)
-        missing_columns = sorted(set(PLAYER_STATS_COLUMNS) - set(df.columns))
-        if missing_columns:
-            raise ValueError(
-                f"Player stats table is missing columns: {missing_columns}"
-            )
-        if (
-            not df["player"]
-            .map(lambda value: isinstance(value, str) and bool(value.strip()))
-            .all()
-        ):
-            raise ValueError("Player identities must be nonblank strings.")
-        if df["player"].duplicated().any():
-            raise ValueError("Player identities must be unique.")
-        df["as_of_date"] = pd.to_datetime(df["as_of_date"], errors="coerce")
-        if df["as_of_date"].isna().any():
-            raise ValueError("Player snapshot dates must be parseable and non-null.")
-        for column in ("rank", "elo"):
-            df[column] = pd.to_numeric(df[column], errors="coerce")
-            if df[column].isna().any() or not np.isfinite(df[column]).all():
+        source = player_stats_file
+        if expected_sha256 is not None:
+            source = BytesIO(Path(player_stats_file).read_bytes())
+            if sha256(source.getbuffer()).hexdigest() != expected_sha256:
                 raise ValueError(
-                    f"Player stats {column} must contain finite numeric values."
+                    "Player stats SHA-256 mismatch for the promoted bundle."
                 )
-        if ((df["rank"] <= 0) | (df["rank"] % 1 != 0)).any():
-            raise ValueError("Player ranks must be positive integers.")
-        if ((df["elo"] <= 0) | (df["elo"] > 5000)).any():
-            raise ValueError("Player Elo ratings must be within (0, 5000].")
-        return df.set_index("player", drop=False).sort_index()
-    except FileNotFoundError:
+        df = pd.read_feather(source)
+    except FileNotFoundError as exc:
         raise FileNotFoundError(
             f"Player stats file '{player_stats_file}' not found. Please check the file path."
-        )
+        ) from exc
+    except ValueError:
+        raise
     except Exception as e:
-        raise ValueError(f"Error occurred while loading player stats: {e}")
+        raise ValueError(f"Error occurred while loading player stats: {e}") from e
+
+    missing_columns = sorted(set(PLAYER_STATS_COLUMNS) - set(df.columns))
+    if missing_columns:
+        raise ValueError(f"Player stats table is missing columns: {missing_columns}")
+    if (
+        not df["player"]
+        .map(lambda value: isinstance(value, str) and bool(value.strip()))
+        .all()
+    ):
+        raise ValueError("Player identities must be nonblank strings.")
+    if df["player"].duplicated().any():
+        raise ValueError("Player identities must be unique.")
+    df["as_of_date"] = pd.to_datetime(df["as_of_date"], errors="coerce")
+    if df["as_of_date"].isna().any():
+        raise ValueError("Player snapshot dates must be parseable and non-null.")
+    for column in ("rank", "elo"):
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+        if df[column].isna().any() or not np.isfinite(df[column]).all():
+            raise ValueError(
+                f"Player stats {column} must contain finite numeric values."
+            )
+    if ((df["rank"] <= 0) | (df["rank"] % 1 != 0)).any():
+        raise ValueError("Player ranks must be positive integers.")
+    if ((df["elo"] <= 0) | (df["elo"] > 5000)).any():
+        raise ValueError("Player Elo ratings must be within (0, 5000].")
+    return df.set_index("player", drop=False).sort_index()
 
 
 def predict(
@@ -242,6 +259,7 @@ def load_model_bundle(model_path: str | Path) -> LoadedModelBundle:
         estimator=model,
         identity=identity,
         artifact_path=path.resolve(),
+        player_stats_sha256=metadata.get("player_stats_sha256"),
     )
 
 
@@ -254,9 +272,9 @@ def resolve_player_snapshots(
         raise ValueError(f"Player stats table is missing columns: {missing_columns}")
 
     stats_by_player = (
-        player_stats.reset_index(drop=True)
-        .set_index("player", drop=False, verify_integrity=True)
-        .sort_index()
+        player_stats
+        if player_stats.index.name == "player" and player_stats.index.is_unique
+        else player_stats.set_index("player", drop=False, verify_integrity=True)
     )
     missing_players = [
         player for player in (p1_name, p2_name) if player not in stats_by_player.index

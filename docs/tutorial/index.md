@@ -26,7 +26,9 @@ different version.
 - `model.version` identifies the saved model. The full response also includes
   a checksum, a fingerprint of the model file.
 - `p1_as_of_date` dates the rank and Elo rating used for Fognini. Elo is a
-  rating based on past match results.
+  rating based on past match results. This example replays the known
+  Brasil Open final using snapshots from the same match row on the last
+  date in the dataset.
 
 ## Before you start
 

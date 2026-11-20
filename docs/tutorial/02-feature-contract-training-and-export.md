@@ -39,11 +39,13 @@ set.
 | --- | ---: | --- |
 | Fit candidates | 3,482 | 2015-03-12 through 2016-06-19 |
 | Compare candidates | 1,754 | 2016-06-20 through 2017-03-04 |
+| Evaluate after selection | 2,630 | 2017-03-05 through 2018-03-04 |
 
 Keeping an entire date on one side of the split makes the fitting period
-strictly earlier. This later period informs the selection decision. An
-independent estimate of forecast quality would use outcomes that played no
-part in choosing the model.
+strictly earlier. After selection, training scores the same fitted candidates
+on the third period. Elo log loss rises from 0.6021 on the selection holdout
+to 0.6295 in that later window. Find both results in the model card and the
+later metrics under `post_selection` in the metadata.
 
 <a id="prediction-time-availability-comes-first"></a>
 <a id="preprocessing-respects-feature-type"></a>

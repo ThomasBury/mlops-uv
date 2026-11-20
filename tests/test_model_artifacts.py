@@ -154,17 +154,14 @@ def test_direct_loading_requires_both_v2_sidecars(tmp_path):
         load_model_bundle(model_path)
 
 
-def test_package_version_mismatch_fails_before_joblib_load(tmp_path, monkeypatch):
+def test_promotion_retains_training_version_across_runtime_version_changes(tmp_path):
     model_path = create_model_bundle(tmp_path)
     metadata = read_json(model_metadata_path(model_path))
-    metadata["model"]["package"]["version"] = "999.0.0"
+    metadata["model"]["package"]["version"] = "0.2.2"
     write_json(model_metadata_path(model_path), metadata)
-    mocked_load = Mock(side_effect=AssertionError("joblib.load must not run"))
-    monkeypatch.setattr(prediction_module, "load", mocked_load)
-
-    with pytest.raises(ValueError, match="package version mismatch"):
-        load_model_bundle(model_path)
-    mocked_load.assert_not_called()
+    pointer = promote_model(model_path)
+    assert read_json(pointer)["package_version"] == "0.2.2"
+    assert isinstance(load_model_bundle(tmp_path).estimator, EloBaselineClassifier)
 
 
 @pytest.mark.parametrize("target", ["model", "metadata", "modelcard", "pointer"])
@@ -274,7 +271,7 @@ def test_atomic_json_preserves_format_and_read_permissions(tmp_path, existing_mo
     assert list(tmp_path.iterdir()) == [destination]
 
 
-def test_concurrent_exports_cannot_replace_the_first_artifact(tmp_path):
+def test_concurrent_exports_with_same_timestamp_keep_both_artifacts(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
     from datetime import datetime, timezone
     from threading import Barrier
@@ -286,17 +283,10 @@ def test_concurrent_exports_cannot_replace_the_first_artifact(tmp_path):
 
     def export(value):
         barrier.wait(timeout=5)
-        try:
-            return value, export_model(
-                {"value": value}, tmp_path, exported_at=timestamp
-            )
-        except FileExistsError:
-            return value, None
+        return value, export_model({"value": value}, tmp_path, exported_at=timestamp)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(export, (1, 2)))
-    winners = [(value, path) for value, path in results if path is not None]
-    assert len(winners) == 1
-    value, path = winners[0]
-    assert load(path) == {"value": value}
-    assert list(tmp_path.iterdir()) == [path]
+    assert len(list(tmp_path.iterdir())) == 2
+    for value, path in results:
+        assert load(path) == {"value": value}

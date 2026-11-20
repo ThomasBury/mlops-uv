@@ -12,7 +12,7 @@ export ACEBET_DEMO_USERNAME := env_var_or_default("ACEBET_DEMO_USERNAME", "johnd
 export ACEBET_DEMO_PASSWORD := env_var_or_default("ACEBET_DEMO_PASSWORD", "secret")
 docker_image := "acebet"
 docker_host_port := env_var_or_default("ACEBET_DOCKER_PORT", "8000")
-predict_payload := "{\"p1_name\":\"Fognini F.\",\"p2_name\":\"Jarry N.\",\"date\":\"2018-03-04\",\"series\":\"ATP250\",\"court\":\"Outdoor\",\"surface\":\"Hard\",\"round\":\"1st Round\",\"best_of\":3}"
+predict_payload := "{\"p1_name\":\"Fognini F.\",\"p2_name\":\"Jarry N.\",\"date\":\"2018-03-04\",\"series\":\"ATP250\",\"court\":\"Indoor\",\"surface\":\"Clay\",\"round\":\"The Final\",\"best_of\":3}"
 
 # Running just with no arguments lists all available recipes. @ suppresses echoing the command itself.
 default:
@@ -93,10 +93,10 @@ refresh-feature-state: setup
         --player-stats-output-path src/acebet/data/latest_player_stats_sample.feather
 # Trains and evaluates without exporting any model artifact.
 train-check: setup
-    uv run python -m acebet.train.train
+    uv run python -m acebet.train.train --post-selection-end-date 2018-03-04
 # Exports a model bundle to an ignored local directory.
 train-local output_dir="var/models": setup
-    uv run python -m acebet.train.train --export-joblib --output-dir "{{output_dir}}"
+    uv run python -m acebet.train.train --post-selection-end-date 2018-03-04 --export-joblib --output-dir "{{output_dir}}"
 # Promotes the latest bundle in an ignored local directory.
 promote-local output_dir="var/models": setup
     uv run python -m acebet.train.promote --output-dir "{{output_dir}}"
@@ -104,6 +104,7 @@ promote-local output_dir="var/models": setup
 train-local-mlflow output_dir="var/models":
     uv sync --locked --group mlops
     uv run python -m acebet.train.train \
+        --post-selection-end-date 2018-03-04 \
         --export-joblib \
         --enable-mlflow \
         --output-dir "{{output_dir}}"

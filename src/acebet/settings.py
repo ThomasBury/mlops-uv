@@ -32,6 +32,7 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 LogFormat = Literal["pretty", "json"]
 TraceExporter = Literal["console", "otlp"]
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
 class AppSettings(BaseSettings):
@@ -58,6 +59,7 @@ class AppSettings(BaseSettings):
     service_name: NonEmptyString = "acebet-api"
     model_dir: Path | None = None
     data_dir: Path | None = None
+    player_stats_sha256: Sha256Hex | None = None
     max_snapshot_age_days: PositiveInt | None = None
 
     model_config = SettingsConfigDict(
@@ -75,6 +77,7 @@ class AppSettings(BaseSettings):
         "otlp_endpoint",
         "model_dir",
         "data_dir",
+        "player_stats_sha256",
         "max_snapshot_age_days",
         mode="before",
     )
@@ -101,10 +104,12 @@ class AppSettings(BaseSettings):
             return value.strip().upper()
         return value
 
-    @field_validator("log_format", "trace_exporter", mode="before")
+    @field_validator(
+        "log_format", "trace_exporter", "player_stats_sha256", mode="before"
+    )
     @classmethod
-    def normalize_observability_strings(cls, value: object) -> object:
-        """Normalize observability string settings."""
+    def normalize_lowercase_strings(cls, value: object) -> object:
+        """Strip and lowercase string settings with lowercase values."""
         if isinstance(value, str):
             return value.strip().lower() if value.strip() else value.strip()
         return value

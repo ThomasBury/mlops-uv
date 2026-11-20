@@ -34,6 +34,7 @@ from acebet.app.runtime import PredictionAssets, PredictionMode, RuntimeAssets
 from acebet.settings import get_settings
 
 PREDICTION_PATHS = {"/predict/production", "/predict/testing"}
+SNAPSHOT_WARNING_AGE_DAYS = 60
 PREDICTION_DOMAIN_RESPONSES: dict[int | str, dict[str, Any]] = {
     422: {
         "model": PredictionDomainErrorResponse,
@@ -96,6 +97,7 @@ def _predict_match_outcome(
     date_string = match_date.isoformat()
     sample_data = prediction_mode == "testing"
     assets = _get_prediction_assets(runtime_assets, prediction_mode)
+    max_age_days = get_settings().max_snapshot_age_days
 
     prediction_start = time.perf_counter()
     with prediction_span(request, "acebet.predict_match_outcome"):
@@ -107,7 +109,7 @@ def _predict_match_outcome(
                 match_date,
                 p1_snapshot,
                 p2_snapshot,
-                max_age_days=get_settings().max_snapshot_age_days,
+                max_age_days=max_age_days,
             )
             probability, predicted_class = make_online_prediction(
                 model=assets.model,
@@ -189,6 +191,18 @@ def _predict_match_outcome(
             raise HTTPException(
                 status_code=500, detail="Internal prediction engine error."
             ) from exc
+
+    if (
+        max_age_days is None
+        and max(feature_freshness.p1_age_days, feature_freshness.p2_age_days)
+        > SNAPSHOT_WARNING_AGE_DAYS
+    ):
+        get_request_logger().warning(
+            "prediction_stale_snapshots",
+            prediction_mode=prediction_mode,
+            p1_age_days=feature_freshness.p1_age_days,
+            p2_age_days=feature_freshness.p2_age_days,
+        )
 
     record_prediction_metrics(
         mode=prediction_mode,

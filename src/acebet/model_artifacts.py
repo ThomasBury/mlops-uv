@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import hashlib
 import json
 import math
@@ -10,9 +10,7 @@ import os
 import stat
 from tempfile import NamedTemporaryFile
 from pathlib import Path
-from typing import Any, cast
-
-from acebet import __version__
+from typing import IO, Any, cast
 
 MODEL_METADATA_SCHEMA_VERSION = 2
 PROMOTION_RECORD_SCHEMA_VERSION = 2
@@ -42,6 +40,16 @@ def promotion_record_path(model_dir: str | Path) -> Path:
 
 def write_json(path: str | Path, payload: dict[str, Any]) -> Path:
     """Replace JSON atomically after a complete write beside the destination."""
+
+    def write(stream: IO[str]) -> None:
+        json.dump(payload, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+
+    return write_atomic(path, write)
+
+
+def write_atomic(path: str | Path, write: Callable[[IO[str]], object]) -> Path:
+    """Replace a text file after writing it beside the destination."""
     output_path = Path(path)
     mode = stat.S_IMODE(output_path.stat().st_mode) if output_path.exists() else 0o644
     stream = NamedTemporaryFile(
@@ -55,8 +63,7 @@ def write_json(path: str | Path, payload: dict[str, Any]) -> Path:
     temporary_path = Path(stream.name)
     try:
         with stream:
-            json.dump(payload, stream, indent=2, sort_keys=True)
-            stream.write("\n")
+            write(stream.file)
         os.chmod(temporary_path, mode)
         temporary_path.replace(output_path)
     finally:
@@ -247,6 +254,10 @@ def validate_model_metadata(
         raise ValueError(
             "Model metadata dataset section is incomplete or has unknown fields."
         )
+    if "player_stats_sha256" in metadata and not _is_sha256(
+        metadata["player_stats_sha256"]
+    ):
+        raise ValueError("Player stats sha256 must be a lowercase SHA-256 digest.")
     source_path = dataset["source_path"]
     if (
         not isinstance(source_path, str)
@@ -354,10 +365,14 @@ def validate_model_metadata(
         or model.get("kind") != recomputed["selected_model_kind"]
     ):
         raise ValueError("Model kind does not match the recomputed selected candidate.")
-    if model.get("package") != {"name": PACKAGE_NAME, "version": __version__}:
-        raise ValueError(
-            f"Model artifact package version mismatch: expected {PACKAGE_NAME} {__version__}, found {model.get('package')}. Regenerate and promote the bundle."
-        )
+    package = model.get("package")
+    if (
+        not isinstance(package, Mapping)
+        or package.get("name") != PACKAGE_NAME
+        or not isinstance(package.get("version"), str)
+        or not package["version"].strip()
+    ):
+        raise ValueError("Model artifact package identity is invalid.")
     if (
         model.get("serialization") != MODEL_SERIALIZATION
         or model.get("trusted_only") is not True
@@ -366,11 +381,7 @@ def validate_model_metadata(
             "Model metadata must identify trusted-only joblib serialization."
         )
     model_sha = model.get("sha256")
-    if (
-        not isinstance(model_sha, str)
-        or len(model_sha) != 64
-        or any(character not in "0123456789abcdef" for character in model_sha)
-    ):
+    if not _is_sha256(model_sha):
         raise ValueError("Model sha256 must be a lowercase SHA-256 digest.")
     if model_path is not None:
         path = Path(model_path)
@@ -381,6 +392,14 @@ def validate_model_metadata(
                 "Model artifact SHA-256 mismatch. The bundle may be incomplete or tampered."
             )
     return recomputed
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
 
 
 def ensure_artifact_bundle(model_path: str | Path) -> tuple[Path, Path, Path]:
@@ -438,7 +457,7 @@ def build_promotion_record(model_path: str | Path) -> dict[str, Any]:
         "modelcard_filename": card_file.name,
         "model_kind": model["kind"],
         "package_name": PACKAGE_NAME,
-        "package_version": __version__,
+        "package_version": model["package"]["version"],
         "model_sha256": sha256_file(model_file),
         "metadata_sha256": sha256_file(metadata_file),
         "modelcard_sha256": sha256_file(card_file),
@@ -494,7 +513,7 @@ def validate_promotion_record(record: Mapping[str, Any], model_dir: str | Path) 
     identity = {
         "model_kind": model["kind"],
         "package_name": PACKAGE_NAME,
-        "package_version": __version__,
+        "package_version": model["package"]["version"],
         "model_sha256": model["sha256"],
         "selection_reason": selection["reason_code"],
     }

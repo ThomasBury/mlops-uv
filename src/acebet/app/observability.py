@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 from contextlib import AbstractContextManager, nullcontext
+from contextvars import ContextVar
 from importlib import import_module
 import io
 import logging
@@ -104,7 +105,9 @@ class TracerProviderProtocol(Protocol):
         ...
 
 
-_TRACE_API: ModuleType | None = None
+_request_trace_api: ContextVar[ModuleType | None] = ContextVar(
+    "request_trace_api", default=None
+)
 
 
 def _load_tracing_modules() -> tuple[ModuleType, ...]:
@@ -132,9 +135,10 @@ def add_trace_context(
     event_dict: MutableMapping[str, Any],
 ) -> MutableMapping[str, Any]:
     """Attach trace identifiers when an OpenTelemetry span is active."""
-    if _TRACE_API is None:
+    trace_api = _request_trace_api.get()
+    if trace_api is None:
         return event_dict
-    span = cast(SpanProtocol, _TRACE_API.get_current_span())
+    span = cast(SpanProtocol, trace_api.get_current_span())
     span_context = span.get_span_context()
     if span_context.is_valid:
         event_dict["trace_id"] = f"{span_context.trace_id:032x}"
@@ -233,13 +237,12 @@ def configure_tracing(
     app: FastAPI, settings: AppSettings
 ) -> TracerProviderProtocol | None:
     """Configure tracing resources owned exclusively by one application."""
-    global _TRACE_API
     if not settings.tracing_enabled:
         app.state.tracer_provider = None
         app.state.tracer = None
         app.state.tracing_instrumentor = None
         app.state.tracing_instrumented = False
-        _TRACE_API = None
+        app.state.trace_api = None
         return None
 
     validate_trace_exporter_settings(settings)
@@ -275,7 +278,7 @@ def configure_tracing(
     app.state.tracing_instrumented = True
     # Lifespan startup runs after Starlette has cached the initial middleware stack.
     app.middleware_stack = app.build_middleware_stack()
-    _TRACE_API = trace_api
+    app.state.trace_api = trace_api
     return provider
 
 
@@ -289,7 +292,6 @@ def prediction_span(request: Request, name: str) -> AbstractContextManager[Any]:
 
 def shutdown_tracing(app: FastAPI) -> None:
     """Uninstrument, flush, shut down, and clear one app's tracing state."""
-    global _TRACE_API
     provider = getattr(app.state, "tracer_provider", None)
     instrumentor = getattr(app.state, "tracing_instrumentor", None)
     try:
@@ -308,7 +310,7 @@ def shutdown_tracing(app: FastAPI) -> None:
                 app.state.tracer = None
                 app.state.tracing_instrumentor = None
                 app.state.tracing_instrumented = False
-                _TRACE_API = None
+                app.state.trace_api = None
 
 
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -374,9 +376,12 @@ def render_metrics() -> tuple[bytes, str]:
     return generate_latest(), CONTENT_TYPE_LATEST
 
 
-def bind_request_context(request_id: str, method: str, path: str) -> None:
+def bind_request_context(
+    request_id: str, method: str, path: str, trace_api: ModuleType | None
+) -> None:
     """Bind common request context for logs."""
     structlog.contextvars.clear_contextvars()
+    _request_trace_api.set(trace_api)
     structlog.contextvars.bind_contextvars(
         request_id=request_id,
         method=method,
@@ -387,6 +392,7 @@ def bind_request_context(request_id: str, method: str, path: str) -> None:
 def clear_request_context() -> None:
     """Clear request-bound log context."""
     structlog.contextvars.clear_contextvars()
+    _request_trace_api.set(None)
 
 
 def get_request_logger() -> structlog.stdlib.BoundLogger:

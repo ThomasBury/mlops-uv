@@ -6,9 +6,10 @@ description: Inspect AceBet schema-v2 bundles, checksum validation, and explicit
 # Model Artifacts And Promotion
 
 AceBet exports a model only after comparing a constant baseline, the prepared
-Elo probability, and LightGBM on the same date-grouped temporal selection holdout. The
-constant candidate is comparison-only and is never serialized. No independent
-final test is implemented; the later partition is used for model selection.
+Elo probability, and LightGBM on the same date-grouped temporal selection
+holdout. The constant candidate is comparison-only. The standard training
+recipes also score all three fitted candidates on a separate, later window
+after the selection decision.
 
 ## Selection policy
 
@@ -36,20 +37,22 @@ Equality at either boundary passes. The canonical window currently selects Elo:
 An export consists of exactly three same-stem files:
 
 ```text
-model_YYYY-MM-DD-HH-MM-SS.joblib
-model_YYYY-MM-DD-HH-MM-SS.metadata.json
-model_YYYY-MM-DD-HH-MM-SS.modelcard.md
+model_<timestamp>_<unique-id>.joblib
+model_<timestamp>_<unique-id>.metadata.json
+model_<timestamp>_<unique-id>.modelcard.md
 ```
 
 The metadata records:
 
-- the project-relative dataset path and complete Feather-file SHA-256
+- the dataset path (filename for files outside the checkout) and complete Feather-file SHA-256
 - requested and observed windows, cutoff, training/selection holdout date ranges (`test` in metadata), and row counts
 - the complete ordered numeric and categorical feature contract
 - all four metrics for constant, Elo, and LightGBM
 - training prevalence, improvements over constant, servability, and LightGBM parameters
 - both selection margins, computed deltas, selected kind, and reason
-- the model filename, kind, exact `acebet` version, serialization marker, and SHA-256
+- the post-selection date range, row count, and metrics when requested
+- the SHA-256 of the production player state derived from the same dataset
+- the model filename, kind, training package version, serialization marker, and SHA-256
 - optional MLflow run ID and export timestamp
 
 The model card presents the same candidate comparison and identity for human
@@ -64,9 +67,10 @@ SHA-256 values recorded for the packaged example.
 | File | SHA-256 |
 | --- | --- |
 | `model_2026-08-02-12-59-07.joblib` | `a51b64ddddc094260ff41aa68beba9662bdb7769076130f55b1ed54a51a703c7` |
-| `model_2026-08-02-12-59-07.metadata.json` | `84ed83817d78890c0dac5a075bcb90ee192747fa2bde9895c1a4ba658365f86a` |
-| `model_2026-08-02-12-59-07.modelcard.md` | `acc3dff3b691cfc6cd5f2f1cef33d168486d325e4528daa17a62fb20c2b46640` |
+| `model_2026-08-02-12-59-07.metadata.json` | `b5f0b8bf32b98e40bd7da38f9244cf194c8a015e5a1e9a1217db33558f2573e5` |
+| `model_2026-08-02-12-59-07.modelcard.md` | `91393f6758f7090294674145f5db4efc268bcdf2ba0a9b531a0d178b84ff196a` |
 | `data/atp_data_production.feather` | `cb27873cafc691f2e0e89a9e44478da240bd6ed3f507cb283b1ea2e720c044d3` |
+| `latest_player_stats.feather` | `bad2d0f978840b0daadc4416cbfe49375e1abdf57a09b8edfc8a6b9f28f7bb8b` |
 
 ## Promotion
 
@@ -76,7 +80,7 @@ just serve-with-assets
 ```
 
 Promotion writes `models/promoted_model.json`. Schema v2 binds the three
-filenames to the selected model kind, exact package version, model SHA-256,
+filenames to the selected model kind, recorded training version, model SHA-256,
 metadata SHA-256, model-card SHA-256, and selection reason. Promotion recomputes
 selection from candidate metrics and validates every identity without
 unpickling the model.
@@ -84,7 +88,10 @@ unpickling the model.
 `serve-with-assets` sets `ACEBET_MODEL_DIR` to `models/` and
 `ACEBET_DATA_DIR` to `data/`, so this promoted pointer and the refreshed player
 state become the production serving inputs instead of merely being local build
-outputs.
+outputs. Startup compares the mounted player state to the digest in model
+metadata. When using a custom dataset, generate the state from that same file
+with `acebet.dataprep.dataprep --input-path … --player-stats-output-path …`
+in the same locked environment as training.
 
 Schema-v1 metadata and pointers are deliberately unsupported. Regenerate and
 promote them with the current workflow.
@@ -96,9 +103,10 @@ fallback. A direct joblib path remains available to trusted tooling, but its
 complete v2 sidecars are still mandatory.
 
 Before `joblib.load`, the loader validates the pointer hashes, metadata schema,
-feature contract, recomputed selection, selected kind, model digest, and exact
-installed `acebet` version. After deserialization it verifies the Python type
-and fitted feature contract for Elo or LightGBM.
+feature contract, recomputed selection, selected kind, model digest, and
+agreement between the pointer and metadata about the training version.
+After deserialization it verifies the Python type and fitted feature
+contract for Elo or LightGBM.
 
 !!! warning
     Checksums provide integrity, not authenticity. Joblib relies on pickle and

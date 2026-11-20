@@ -38,9 +38,11 @@ just predict-production
 }
 ```
 
-`p1_win_probability` is the model’s estimate that Fognini, the first player in
-the request, wins. `model.kind` tells you the Elo baseline answered. To verify
-the exact saved model, compare `model.sha256` in the full response with
+`p1_win_probability` is the model’s estimate for Fognini, the first player in
+the request. `model.kind` tells you the Elo baseline answered. This example
+replays the 2018 Brasil Open final using snapshots from that match’s row on
+the last date in the dataset. The full response shows both snapshot dates.
+To verify the exact saved model, compare `model.sha256` in the full response with
 `model_sha256` in the [committed promotion record](src/acebet/data/promoted_model.json).
 
 While the server is running, open the [local API reference at `/docs`](http://127.0.0.1:8000/docs).
