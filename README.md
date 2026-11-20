@@ -1,11 +1,17 @@
-# AceBet — Classical MLOps with uv
+# Classical MLOps with `uv`
 
-AceBet is a hands-on tutorial for Python users learning to train a tennis match
-predictor and serve it through a local API.
+Build, evaluate, and serve a tennis match predictor in ten hands-on lessons.
+AceBet is the Python application you work on throughout the tutorial.
 
-**[Read the tutorial](https://github.com/ThomasBury/mlops-uv/blob/main/docs/tutorial/index.md)**
+**[Read the web documentation](https://thomasbury.github.io/mlops-uv/)** or
+[start the tutorial](https://thomasbury.github.io/mlops-uv/tutorial/).
 
-![](docs/images/acebet-mark.svg)
+## What you’ll learn
+
+- Recreate a Python environment from a lockfile with `uv`.
+- Build model inputs, compare models on later matches, and choose which saved model to serve.
+- Serve an authenticated prediction, verify which model answered, and investigate requests using logs, metrics, and traces.
+- Package the application, reproduce the runtime in Docker, and decide what CI should verify before release.
 
 ## Quickstart
 
@@ -20,38 +26,33 @@ uv sync --locked --python 3.12
 just serve
 ```
 
-Leave the server running. In a second terminal, from the `mlops-uv` directory,
-run the built-in example. It signs in with the demo credentials and requests
-a prediction for Fognini against Jarry.
+On port 8000, the local API serves the packaged model. Leave it running and
+request an example prediction from a second terminal in `mlops-uv`.
 
 ```bash
 just predict-production
 ```
 
-**Response excerpt**
+The packaged Elo model estimates a 77% chance of a Fognini win in this replay
+of the 2018 Brasil Open final. See the [full request and response](https://thomasbury.github.io/mlops-uv/api/sync-endpoints/).
 
-```json
-{
-  "predicted_winner": "Fognini F.",
-  "p1_win_probability": 0.768387902579221,
-  "model": {"kind": "elo_baseline"}
-}
-```
+The `just` commands are shortcuts for getting started. The tutorial walks
+through the underlying workflow and explains what the shortcuts run. The
+[setup guide](https://thomasbury.github.io/mlops-uv/getting-started/) and
+[developer workflow guide](https://thomasbury.github.io/mlops-uv/uv/uv-workflows-for-mlops/)
+cover the commands in more detail.
 
-`p1_win_probability` is the model’s estimate for Fognini, the first player in
-the request. `model.kind` tells you the Elo baseline answered. This example
-replays the 2018 Brasil Open final using snapshots from that match’s row on
-the last date in the dataset. The full response shows both snapshot dates.
-To verify the exact saved model, compare `model.sha256` in the full response with
-`model_sha256` in the [committed promotion record](src/acebet/data/promoted_model.json).
+## Tutorial chapters
 
-While the server is running, open the [local API reference at `/docs`](http://127.0.0.1:8000/docs).
-For more options, see the [full setup guide](https://github.com/ThomasBury/mlops-uv/blob/main/docs/getting-started.md).
+1. [Recreate the working environment](https://thomasbury.github.io/mlops-uv/tutorial/00-recreate-the-working-environment/)
+2. [Establish what a prediction needs](https://thomasbury.github.io/mlops-uv/tutorial/01-notebook-to-data-contract/)
+3. [Make a training decision reproducible](https://thomasbury.github.io/mlops-uv/tutorial/02-feature-contract-training-and-export/)
+4. [Choose the bundle the service may load](https://thomasbury.github.io/mlops-uv/tutorial/03-reproducibility-versioning-and-dependencies/)
+5. [Serve one prediction](https://thomasbury.github.io/mlops-uv/tutorial/04-serving-async-and-monitoring/)
+6. [Explain a rejected request](https://thomasbury.github.io/mlops-uv/tutorial/05-authentication-authorization-and-access-boundaries/)
+7. [Investigate a running service](https://thomasbury.github.io/mlops-uv/tutorial/06-observability-logging-metrics-and-traces/)
+8. [Hand the application to another Python user](https://thomasbury.github.io/mlops-uv/tutorial/08-hand-the-application-to-another-python-user/)
+9. [Reproduce the service runtime](https://thomasbury.github.io/mlops-uv/tutorial/09-reproduce-the-service-runtime/)
+10. [Decide what to verify before release](https://thomasbury.github.io/mlops-uv/tutorial/07-validation-ci-deployment-and-boundaries/)
 
-## What you’ll learn
-
-- Compare candidate models on matches played after the training period.
-- Verify which saved model answered a request by matching its checksum to the promotion record.
-- Investigate a failed request using its request ID in the logs and the service’s metrics.
-
-[Apache 2.0 License](LICENSE)
+Licensed under Apache 2.0.
