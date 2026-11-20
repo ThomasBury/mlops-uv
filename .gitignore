@@ -11,6 +11,7 @@ data/*
 !data/raw/
 data/raw/*
 !data/raw/atp_matches_sample.csv
+!data/raw/valuebetennis-2021-atp.csv
 models/
 mlartifacts/
 mlruns/

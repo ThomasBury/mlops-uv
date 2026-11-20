@@ -35,7 +35,49 @@ NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_len
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
-class AppSettings(BaseSettings):
+def _blank_strings_to_none(value: object) -> object:
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
+def _normalize_uppercase(value: object) -> object:
+    return value.strip().upper() if isinstance(value, str) else value
+
+
+def _normalize_lowercase(value: object) -> object:
+    return value.strip().lower() if isinstance(value, str) else value
+
+
+class ObservabilitySettings(BaseSettings):
+    """Logging, metrics and tracing configuration shared by the two services."""
+
+    log_level: LogLevel = "INFO"
+    log_file: str | None = None
+    log_format: LogFormat = "pretty"
+    metrics_enabled: bool = True
+    tracing_enabled: bool = False
+    trace_exporter: TraceExporter = "console"
+    otlp_endpoint: str | None = None
+    service_name: NonEmptyString = "acebet-api"
+
+    model_config = SettingsConfigDict(
+        env_prefix="ACEBET_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    _blank_log_settings = field_validator("log_file", "otlp_endpoint", mode="before")(
+        _blank_strings_to_none
+    )
+    _log_level = field_validator("log_level", mode="before")(_normalize_uppercase)
+    _log_modes = field_validator("log_format", "trace_exporter", mode="before")(
+        _normalize_lowercase
+    )
+
+
+class AppSettings(ObservabilitySettings):
     """Central configuration for the tutorial service."""
 
     secret_key: SecretStr | None = None
@@ -46,73 +88,31 @@ class AppSettings(BaseSettings):
     demo_username: str = "johndoe"
     demo_password: SecretStr = SecretStr(TUTORIAL_DEMO_PASSWORD)
     env: Environment = "development"
-    log_level: LogLevel = "INFO"
-    log_file: str | None = None
-    log_format: LogFormat = "pretty"
-    metrics_enabled: bool = True
     rate_limiting_enabled: bool = True
     token_rate_limit: str = "5/minute"
     prediction_rate_limit: str = "30/minute"
-    tracing_enabled: bool = False
-    trace_exporter: TraceExporter = "console"
-    otlp_endpoint: str | None = None
-    service_name: NonEmptyString = "acebet-api"
     model_dir: Path | None = None
     data_dir: Path | None = None
     player_stats_sha256: Sha256Hex | None = None
     max_snapshot_age_days: PositiveInt | None = None
 
-    model_config = SettingsConfigDict(
-        env_prefix="ACEBET_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        secrets_dir=("/var/run", "/run/secrets"),
-        extra="ignore",
-    )
+    model_config = SettingsConfigDict(secrets_dir=DEFAULT_SECRET_DIRS)
 
-    @field_validator(
+    _blank_app_settings = field_validator(
         "secret_key",
         "secrets_dir",
-        "log_file",
-        "otlp_endpoint",
         "model_dir",
         "data_dir",
         "player_stats_sha256",
         "max_snapshot_age_days",
         mode="before",
+    )(_blank_strings_to_none)
+    _jwt_algorithm = field_validator("jwt_algorithm", mode="before")(
+        _normalize_uppercase
     )
-    @classmethod
-    def blank_strings_to_none(cls, value: object) -> object:
-        """Treat blank settings as unset."""
-        if isinstance(value, str) and not value.strip():
-            return None
-        return value
-
-    @field_validator("env", mode="before")
-    @classmethod
-    def normalize_env(cls, value: object) -> object:
-        """Normalize the environment name."""
-        if isinstance(value, str):
-            return value.strip().lower()
-        return value
-
-    @field_validator("jwt_algorithm", "log_level", mode="before")
-    @classmethod
-    def normalize_log_level(cls, value: object) -> object:
-        """Normalize the configured log level."""
-        if isinstance(value, str):
-            return value.strip().upper()
-        return value
-
-    @field_validator(
-        "log_format", "trace_exporter", "player_stats_sha256", mode="before"
-    )
-    @classmethod
-    def normalize_lowercase_strings(cls, value: object) -> object:
-        """Strip and lowercase string settings with lowercase values."""
-        if isinstance(value, str):
-            return value.strip().lower() if value.strip() else value.strip()
-        return value
+    _normalized_app_settings = field_validator(
+        "env", "player_stats_sha256", mode="before"
+    )(_normalize_lowercase)
 
     @field_validator("demo_password")
     @classmethod

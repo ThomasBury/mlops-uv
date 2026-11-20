@@ -45,3 +45,17 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["python", "-c", "import sys, urllib.request; r = urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2); sys.exit(0 if r.status == 200 else 1)"]
 
 CMD ["fastapi", "run", "--entrypoint", "acebet.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# The named context replaces this empty stage when building historical-forecast.
+FROM scratch AS forecast_assets
+
+FROM runtime AS historical-forecast
+
+COPY --from=forecast_assets /matches.parquet /selection.json /model.joblib /app/forecast/
+ENV ACEBET_FORECAST_RESULTS=/app/forecast/matches.parquet \
+    ACEBET_FORECAST_BUNDLE=/app/forecast
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2).close()"]
+CMD ["uvicorn", "acebet.app.historical:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+
+FROM runtime AS release

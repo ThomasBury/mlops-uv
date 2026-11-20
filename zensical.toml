@@ -6,6 +6,13 @@ nav = [
   {"Start Here" = "index.md"},
   {"Tutorial" = [
     "tutorial/index.md",
+    {"Define the forecasting problem" = "tutorial/forecast-contract.md"},
+    {"Reproduce a fixture" = "tutorial/reproduce-the-fixture.md"},
+    {"Rebuild match history at a cutoff" = "tutorial/rebuild-match-history.md"},
+    {"Decide whether a forecast improves on Elo" = "tutorial/evaluate-a-forecast.md"},
+    {"Serve the frozen forecast" = "tutorial/serve-the-frozen-forecast.md"},
+    {"Diagnose and roll back a forecast" = "tutorial/diagnose-and-roll-back-a-forecast.md"},
+    {"Automate and audit a forecast" = "tutorial/automate-and-audit-a-forecast.md"},
     {"1. Recreate the working environment" = "tutorial/00-recreate-the-working-environment.md"},
     {"2. Establish what a prediction needs" = "tutorial/01-notebook-to-data-contract.md"},
     {"3. Make a training decision reproducible" = "tutorial/02-feature-contract-training-and-export.md"},

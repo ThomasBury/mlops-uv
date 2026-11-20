@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-from acebet.app import main
+from acebet.app import main, observability
 from acebet.app.routers import prediction as prediction_router
 from acebet.app.dependencies.auth import (
     get_current_active_user,
@@ -244,7 +244,7 @@ def test_request_context_cleanup_runs_when_metrics_processing_fails(
     monkeypatch, phase5_settings
 ):
     cleanup_calls = 0
-    real_clear = main.clear_request_context
+    real_clear = observability.clear_request_context
 
     def tracked_clear():
         nonlocal cleanup_calls
@@ -254,8 +254,8 @@ def test_request_context_cleanup_runs_when_metrics_processing_fails(
     def fail_metrics(*_args, **_kwargs):
         raise RuntimeError("metrics failed")
 
-    monkeypatch.setattr(main, "clear_request_context", tracked_clear)
-    monkeypatch.setattr(main, "record_http_metrics", fail_metrics)
+    monkeypatch.setattr(observability, "clear_request_context", tracked_clear)
+    monkeypatch.setattr(observability, "record_http_metrics", fail_metrics)
     application = create_app()
 
     with TestClient(application) as client:
@@ -513,7 +513,7 @@ def test_logging_middleware_records_and_reraises_application_errors(
 ):
     recorded = []
     monkeypatch.setattr(
-        main,
+        observability,
         "record_http_metrics",
         lambda method, path, status, duration: recorded.append(
             (method, path, status, duration)

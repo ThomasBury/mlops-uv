@@ -16,12 +16,12 @@ from typing import Any, Protocol, cast
 from uuid import uuid4
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from structlog.stdlib import ProcessorFormatter
 from structlog.typing import Processor
 
-from acebet.settings import AppSettings
+from acebet.settings import ObservabilitySettings
 
 HTTP_REQUESTS_TOTAL = Counter(
     "acebet_http_requests_total",
@@ -146,7 +146,7 @@ def add_trace_context(
     return event_dict
 
 
-def get_log_renderer(settings: AppSettings) -> Processor:
+def get_log_renderer(settings: ObservabilitySettings) -> Processor:
     """Return the configured structlog renderer."""
     if settings.log_format == "json":
         return structlog.processors.JSONRenderer()
@@ -154,7 +154,7 @@ def get_log_renderer(settings: AppSettings) -> Processor:
 
 
 def configure_logging(
-    settings: AppSettings,
+    settings: ObservabilitySettings,
     stream: io.TextIOBase | None = None,
 ) -> None:
     """Configure stdlib logging plus structlog processors."""
@@ -209,7 +209,7 @@ def configure_logging(
         uv_logger.propagate = True
 
 
-def validate_trace_exporter_settings(settings: AppSettings) -> None:
+def validate_trace_exporter_settings(settings: ObservabilitySettings) -> None:
     """Validate exporter configuration before optional tracing imports."""
     if settings.trace_exporter == "otlp" and settings.otlp_endpoint is None:
         raise RuntimeError(
@@ -218,7 +218,7 @@ def validate_trace_exporter_settings(settings: AppSettings) -> None:
 
 
 def build_span_exporter(
-    settings: AppSettings,
+    settings: ObservabilitySettings,
     otlp_module: ModuleType | None = None,
     sdk_export_module: ModuleType | None = None,
 ) -> Any:
@@ -234,7 +234,7 @@ def build_span_exporter(
 
 
 def configure_tracing(
-    app: FastAPI, settings: AppSettings
+    app: FastAPI, settings: ObservabilitySettings
 ) -> TracerProviderProtocol | None:
     """Configure tracing resources owned exclusively by one application."""
     if not settings.tracing_enabled:
@@ -403,3 +403,45 @@ def get_request_logger() -> structlog.stdlib.BoundLogger:
 def request_duration_seconds(start_time: float) -> float:
     """Return elapsed request duration in seconds."""
     return time.perf_counter() - start_time
+
+
+async def user_logging_middleware(request: Request, call_next) -> Response:
+    """Attach request IDs and record structured HTTP logs and metrics."""
+    request_id = get_request_id(request)
+    request.state.request_id = request_id
+    bind_request_context(
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+        trace_api=getattr(request.app.state, "trace_api", None),
+    )
+    logger = get_request_logger()
+    start_time = time.perf_counter()
+    try:
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_seconds = request_duration_seconds(start_time)
+            metric_path = resolve_metric_path(request)
+            record_http_metrics(request.method, metric_path, 500, duration_seconds)
+            logger.exception(
+                "http_request_failed",
+                status_code=500,
+                duration_ms=round(duration_seconds * 1000, 2),
+            )
+            raise
+
+        response.headers["X-Request-ID"] = request_id
+        duration_seconds = request_duration_seconds(start_time)
+        metric_path = resolve_metric_path(request)
+        record_http_metrics(
+            request.method, metric_path, response.status_code, duration_seconds
+        )
+        logger.info(
+            "http_request_completed",
+            status_code=response.status_code,
+            duration_ms=round(duration_seconds * 1000, 2),
+        )
+        return response
+    finally:
+        clear_request_context()

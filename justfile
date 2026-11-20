@@ -12,6 +12,7 @@ export ACEBET_DEMO_USERNAME := env_var_or_default("ACEBET_DEMO_USERNAME", "johnd
 export ACEBET_DEMO_PASSWORD := env_var_or_default("ACEBET_DEMO_PASSWORD", "secret")
 docker_image := "acebet"
 docker_host_port := env_var_or_default("ACEBET_DOCKER_PORT", "8000")
+forecast_uv := "uv run --locked --python 3.12 --group mlops --extra tracing"
 predict_payload := "{\"p1_name\":\"Fognini F.\",\"p2_name\":\"Jarry N.\",\"date\":\"2018-03-04\",\"series\":\"ATP250\",\"court\":\"Indoor\",\"surface\":\"Clay\",\"round\":\"The Final\",\"best_of\":3}"
 
 # Running just with no arguments lists all available recipes. @ suppresses echoing the command itself.
@@ -20,27 +21,27 @@ default:
 # Installs/syncs Python dependencies using uv
 setup:
     uv sync --locked
-# Runs the complete suite with the optional tracing runtime available.
+# Runs the complete suite with forecast and tracing dependencies.
 test:
-    uv sync --locked --extra tracing
+    uv sync --locked --group mlops --extra tracing
     uv run pytest tests
 # Runs the Python-version matrix subset without optional integrations.
 unit-test: setup
     uv run pytest tests -m "not (api or tracing or packaging)"
 # Runs the Python 3.12 integration subset.
 integration-test:
-    uv sync --locked --extra tracing
+    uv sync --locked --group mlops --extra tracing
     uv run pytest tests -m "api or tracing or packaging"
 # Runs static checks used by CI.
 lint: setup
     uv run ruff check src tests
 format-check: setup
     uv run ruff format --check src tests
-typecheck: setup
-    uv run ty check
+typecheck:
+    uv run --locked --group mlops ty check
 # Enforces overall and critical-module branch coverage.
 coverage:
-    uv sync --locked --extra tracing
+    uv sync --locked --group mlops --extra tracing
     uv run pytest tests --cov=src/acebet --cov-branch
     uv run coverage report --fail-under=100 \
         --include='src/acebet/model_artifacts.py,src/acebet/app/main.py,src/acebet/app/routers/prediction.py,src/acebet/app/dependencies/predict_winner.py'
@@ -59,6 +60,35 @@ data-build raw_input output_path: setup
     uv run python -m acebet.dataprep.raw_to_prepared \
         --input-path "{{raw_input}}" \
         --output-path "{{output_path}}"
+# Builds canonical history from the pinned tutorial snapshot.
+forecast-prepare $results:
+    {{forecast_uv}} python -m acebet.dataprep.historical_results data/raw/valuebetennis-2021-atp.csv "$results"
+# Freezes the temporal search and fitted candidate in a new bundle directory.
+forecast-train $results $bundle:
+    {{forecast_uv}} python -m acebet.train.historical_evaluation train "$results" "$bundle"
+# Scores the frozen candidate and baselines on the archive's final fixtures.
+forecast-evaluate $results $bundle:
+    {{forecast_uv}} python -m acebet.train.historical_evaluation evaluate "$results" "$bundle"
+# Checks cutoff behavior, evaluation, HTTP parity, monitoring, and rollback.
+forecast-test:
+    {{forecast_uv}} pytest tests/test_forecast.py tests/test_historical_pipeline.py tests/test_historical_evaluation.py tests/test_historical_serving.py
+# Serves a trusted frozen bundle and its matching history on localhost.
+forecast-serve $results $bundle $port="8000":
+    ACEBET_FORECAST_RESULTS="$results" ACEBET_FORECAST_BUNDLE="$bundle" \
+        {{forecast_uv}} uvicorn acebet.app.historical:create_app --factory --host 127.0.0.1 --port "$port"
+# Builds and reviews a candidate in a new run directory.
+forecast-candidate $forecast_run:
+    mkdir -- "$forecast_run"
+    just forecast-prepare "$forecast_run/matches.parquet" > "$forecast_run/preparation.json"
+    just forecast-train "$forecast_run/matches.parquet" "$forecast_run/bundle" > /dev/null
+    just forecast-evaluate "$forecast_run/matches.parquet" "$forecast_run/bundle" > /dev/null
+    {{forecast_uv}} python -m acebet.historical_monitoring review \
+        "$forecast_run/matches.parquet" "$forecast_run/bundle" > "$forecast_run/validation.json"
+    cat -- "$forecast_run/validation.json"
+# Explicitly approves a reviewed candidate if it passes the Elo gate.
+forecast-promote $forecast_run:
+    {{forecast_uv}} python -m acebet.historical_monitoring promote \
+        "$forecast_run/matches.parquet" "$forecast_run/bundle"
 # Rebuilds and validates the committed raw sample in a temporary directory.
 data-check-sample: setup
     #!/usr/bin/env bash
@@ -289,7 +319,7 @@ review:
     echo "== Ruff format =="
     uv run ruff format --check src tests
     echo "== ty =="
-    uv run ty check
+    just --quiet typecheck
     echo "== notebook =="
     just --quiet notebook-check
     echo "== docs =="

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from email.parser import BytesParser
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -207,12 +208,34 @@ assert app.state.tracer_provider is None
 
 
 @pytest.mark.parametrize("artifact_index", [0, 1], ids=["wheel", "sdist"])
-def test_default_clean_install_serves_without_optional_packages(
+def test_default_clean_install_replays_and_serves_without_optional_packages(
     distributions, tmp_path, artifact_index, clean_venv
 ):
     artifact = distributions[artifact_index]
     python = _install_in_clean_venv(clean_venv, str(artifact))
-    environment = os.environ.copy()
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("ACEBET_", "PYTHON"))
+    }
+    replay_command = python.with_name(
+        "acebet-replay.exe" if os.name == "nt" else "acebet-replay"
+    )
+    replay = subprocess.run(
+        [str(replay_command)],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(replay.stdout) == {
+        "fixture_id": "F01",
+        "cutoff": "2030-06-10T12:00:00Z",
+        "p1_id": "P01",
+        "p2_id": "P02",
+        "p1_win_probability": 0.5,
+    }
     environment.update(
         {
             "ACEBET_SECRET_KEY": "distribution-default-smoke-secret",

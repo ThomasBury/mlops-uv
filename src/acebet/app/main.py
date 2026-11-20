@@ -3,7 +3,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-import time
 
 from typing import Any, cast
 from fastapi import FastAPI, Request, Response
@@ -25,16 +24,11 @@ from acebet.app.dependencies.predict_winner import (
     resolve_player_snapshots,
 )
 from acebet.app.observability import (
-    bind_request_context,
-    clear_request_context,
     configure_logging,
     configure_tracing,
-    get_request_id,
     get_request_logger,
-    record_http_metrics,
-    request_duration_seconds,
-    resolve_metric_path,
     shutdown_tracing,
+    user_logging_middleware,
 )
 from acebet.app.routers.authentication import create_authentication_router
 from acebet.app.routers.operational import (
@@ -226,48 +220,6 @@ async def prediction_request_validation_handler(
             },
         )
     return await request_validation_exception_handler(request, exc)
-
-
-async def user_logging_middleware(request: Request, call_next) -> Response:
-    """Attach request IDs and record structured HTTP logs and metrics."""
-    request_id = get_request_id(request)
-    request.state.request_id = request_id
-    bind_request_context(
-        request_id=request_id,
-        method=request.method,
-        path=request.url.path,
-        trace_api=getattr(request.app.state, "trace_api", None),
-    )
-    logger = get_request_logger()
-    start_time = time.perf_counter()
-    try:
-        try:
-            response = await call_next(request)
-        except Exception:
-            duration_seconds = request_duration_seconds(start_time)
-            metric_path = resolve_metric_path(request)
-            record_http_metrics(request.method, metric_path, 500, duration_seconds)
-            logger.exception(
-                "http_request_failed",
-                status_code=500,
-                duration_ms=round(duration_seconds * 1000, 2),
-            )
-            raise
-
-        response.headers["X-Request-ID"] = request_id
-        duration_seconds = request_duration_seconds(start_time)
-        metric_path = resolve_metric_path(request)
-        record_http_metrics(
-            request.method, metric_path, response.status_code, duration_seconds
-        )
-        logger.info(
-            "http_request_completed",
-            status_code=response.status_code,
-            duration_ms=round(duration_seconds * 1000, 2),
-        )
-        return response
-    finally:
-        clear_request_context()
 
 
 def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:

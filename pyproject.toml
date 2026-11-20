@@ -68,6 +68,9 @@ dependencies = [
     "structlog>=24.4.0",
 ]
 
+[project.scripts]
+acebet-replay = "acebet.forecast:main"
+
 [project.optional-dependencies]
 tracing = [
     "opentelemetry-api>=1.32.0",
