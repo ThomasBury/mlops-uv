@@ -1,6 +1,7 @@
 [project]
 site_name = "Classical MLOps and ML Engineering"
-site_url = "https://thomasbury.github.io/mlops-uv/"
+site_url = "https://mlops-uv-tutorial.bury-thomas.workers.dev/"
+copyright = '<a href="/privacy/">Privacy</a>'
 extra_css = ["stylesheets/brand.css"]
 nav = [
   {"Start Here" = "index.md"},
@@ -38,7 +39,8 @@ nav = [
     ]},
     {"Scope and Conventions" = [
       {"Tutorial Boundaries" = "tutorial-shortcuts-vs-production.md"},
-      {"Docstring Standards" = "docstring-standards.md"}
+      {"Docstring Standards" = "docstring-standards.md"},
+      {"Privacy" = "privacy.md"}
     ]}
   ]},
   {"Reference" = [
@@ -50,6 +52,7 @@ nav = [
 ]
 
 [project.theme]
+custom_dir = "overrides"
 logo = "images/acebet-mark.svg"
 favicon = "images/acebet-mark.svg"
 features = [

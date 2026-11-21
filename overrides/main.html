@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  {% if config.extra.adsense_publisher and page.canonical_url %}
+    <meta name="google-adsense-account" content="ca-pub-{{ config.extra.adsense_publisher }}">
+    {% if config.extra.auto_ads and page.url is startingwith("tutorial/") and page.url != "tutorial/" %}
+      <script async crossorigin="anonymous" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-{{ config.extra.adsense_publisher }}"></script>
+    {% endif %}
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% if config.extra.analytics_token %}
+    <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"{{ config.extra.analytics_token }}"}'></script>
+  {% endif %}
+{% endblock %}

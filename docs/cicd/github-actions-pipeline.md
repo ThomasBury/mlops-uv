@@ -42,16 +42,14 @@ build installation step is exactly:
 uv sync --locked --dev
 ```
 
-It builds Zensical for relevant pull requests with only read access. Pushes to
-`main` additionally upload the Pages artifact, then a dependent deployment job
-uses the `github-pages` environment and alone receives `pages: write` and
-`id-token: write`. Pages concurrency prevents overlapping deployments.
-
-In the repository settings, open **Pages** and set **Build and deployment →
-Source** to **GitHub Actions**. The deployment job checks the public homepage
-for the Zensical generator and the **Start Here** heading. It also checks that
-the tutorial and setup routes serve their expected pages. The job fails if
-these checks still fail after six attempts.
+Relevant pull requests build a clean Zensical site with read access and check
+the lesson bookmark, privacy link, search index and downloadable notebook.
+On relevant pushes to `main`, the build uploads that checked `site/` directory.
+The deployment job downloads it, confirms the target Cloudflare subdomain and
+publishes the same files with Wrangler. Only this job uses the
+`cloudflare-production` environment and its Cloudflare credentials.
+It fetches the public lesson and sitemap and compares them with the artifact.
+GitHub Actions is the production publisher for the tutorial.
 
 Every third-party action is pinned to a full commit SHA with its release in a
 comment. Dependabot checks GitHub Actions and Docker references weekly.

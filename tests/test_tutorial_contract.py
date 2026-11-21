@@ -301,13 +301,18 @@ def test_ci_permissions_action_pins_and_dependabot_contract():
     )
 
     assert "contents: read" in global_permissions
-    assert "pages: write" not in global_permissions
-    assert "id-token: write" not in global_permissions
-    assert "pages: write" not in build_job
-    assert "pages: write" in deploy_job
-    assert "id-token: write" in deploy_job
-    assert "name: github-pages" in deploy_job
-    assert "group: pages-${{ github.ref }}" in docs_workflow
+    assert "pages: write" not in docs_workflow
+    assert "id-token: write" not in docs_workflow
+    assert "secrets." not in build_job
+    assert "actions/upload-artifact@" in build_job
+    assert "needs: build" in deploy_job
+    assert "actions/download-artifact@" in deploy_job
+    assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" in deploy_job
+    assert "name: cloudflare-production" in deploy_job
+    assert "secrets.CLOUDFLARE_ACCOUNT_ID" in deploy_job
+    assert "secrets.CLOUDFLARE_API_TOKEN" in deploy_job
+    assert "npx --yes wrangler@4.166.0 deploy" in deploy_job
+    assert "group: documentation-${{ github.ref }}" in docs_workflow
 
     assert "package-ecosystem: github-actions" in dependabot
     assert "package-ecosystem: docker" in dependabot

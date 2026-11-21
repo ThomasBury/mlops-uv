@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "docs/**"
+      - "overrides/**"
+      - wrangler.json
       - zensical.toml
       - pyproject.toml
       - uv.lock
@@ -13,6 +15,8 @@ on:
       - main
     paths:
       - "docs/**"
+      - "overrides/**"
+      - wrangler.json
       - zensical.toml
       - pyproject.toml
       - uv.lock
@@ -22,7 +26,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: documentation-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -39,47 +43,85 @@ jobs:
           python-version: "3.12"
       - name: Install documentation tooling
         run: uv sync --locked --dev
-      - name: Build documentation
-        run: uv run zensical build
-      - name: Upload GitHub Pages artifact
+      - name: Configure production analytics and AdSense
         if: github.event_name == 'push'
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        env:
+          PUBLISHER: ${{ vars.ADSENSE_PUBLISHER_ID }}
+          AUTO_ADS: ${{ vars.ADSENSE_AUTO_ADS }}
+          BEACON: ${{ vars.CLOUDFLARE_WEB_ANALYTICS_TOKEN }}
+        run: |
+          printf '\n[project.extra]\n' >> zensical.toml
+          if [[ -n "$BEACON" ]]; then
+            [[ "$BEACON" =~ ^[a-f0-9]{32}$ ]]
+            printf 'analytics_token = "%s"\n' "$BEACON" >> zensical.toml
+          fi
+          if [[ -z "$PUBLISHER" && "$AUTO_ADS" != true ]]; then exit 0; fi
+          [[ "$PUBLISHER" =~ ^[0-9]{16}$ ]]
+          printf 'adsense_publisher = "%s"\n' "$PUBLISHER" >> zensical.toml
+          if [[ "$AUTO_ADS" == true ]]; then echo 'auto_ads = true' >> zensical.toml; fi
+          printf 'google.com, pub-%s, DIRECT, f08c47fec0942fa0\n' "$PUBLISHER" > docs/ads.txt
+      - name: Build documentation
+        run: uv run --locked zensical build --clean
+      - name: Check built documentation
+        run: |
+          grep -Fq 'id="try-the-contract-on-five-fixtures"' site/tutorial/forecast-contract/index.html
+          grep -Fq 'href="/privacy/"' site/404.html
+          test -s site/search.json
+          cmp docs/assets/notebooks/*.ipynb site/assets/notebooks/*.ipynb
+          if [[ -f docs/ads.txt ]]; then
+            cmp docs/ads.txt site/ads.txt
+            grep -Fq 'name="google-adsense-account"' site/index.html
+          fi
+          if grep -Fqx 'auto_ads = true' zensical.toml; then
+            test "$(grep -oF 'adsbygoogle.js' site/tutorial/forecast-contract/index.html | wc -l)" -eq 1
+            if grep -Fq 'adsbygoogle.js' site/privacy/index.html site/404.html site/tutorial/index.html; then exit 1; fi
+          elif grep -rFq --include='*.html' 'adsbygoogle.js' site; then
+            exit 1
+          fi
+      - name: Upload checked documentation
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: documentation
           path: site
+          if-no-files-found: error
 
   deploy:
-    name: Deploy GitHub Pages
+    name: Deploy tutorial to Cloudflare
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
     environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      name: cloudflare-production
+      url: https://mlops-uv-tutorial.bury-thomas.workers.dev/
     steps:
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-      - name: Deploy GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
-      - name: Verify public documentation
-        shell: bash
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: documentation
+          path: site
+      - name: Publish checked site
         env:
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          base_url="${PAGE_URL%/}"
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" |
+            jq -e '.result.subdomain == "bury-thomas"'
+          npx --yes wrangler@4.166.0 deploy
+      - name: Verify public documentation
+        env:
+          ORIGIN: https://mlops-uv-tutorial.bury-thomas.workers.dev
+        run: |
           for attempt in {1..6}; do
-            if homepage=$(curl -fsSL --max-time 15 "$base_url/") &&
-              grep -Eq '<meta name="generator" content="zensical-[^"]+">' <<< "$homepage" &&
-              grep -Eq '<h1[^>]*>Start Here</h1>' <<< "$homepage" &&
-              curl -fsSL --max-time 15 "$base_url/tutorial/" | grep -F '<h1 id="tutorial">' >/dev/null &&
-              curl -fsSL --max-time 15 "$base_url/getting-started/" | grep -F '<h1 id="getting-started">' >/dev/null; then
+            if curl -fsS --max-time 15 "$ORIGIN/tutorial/forecast-contract/" -o lesson.html &&
+              cmp lesson.html site/tutorial/forecast-contract/index.html &&
+              curl -fsS --max-time 15 "$ORIGIN/sitemap.xml" | cmp - site/sitemap.xml; then
               exit 0
             fi
-            echo "Public documentation check failed (attempt $attempt of 6) at $base_url."
+            echo "Waiting for the checked lesson and sitemap (attempt $attempt of 6)."
             if [[ $attempt -lt 6 ]]; then
               sleep 10
             fi
