@@ -107,6 +107,6 @@ needs multiple long-running containers, such as an external MLflow server,
 database, collector, or dashboard, with each dependency represented by its own
 service.
 
-The separate docs workflow deploys GitHub Pages. Centralized observability,
+The separate docs workflow publishes the static tutorial to Cloudflare. Centralized observability,
 registry infrastructure, orchestration, image scanning/signing, automated
 application deployment, rollout, and rollback remain explicitly out of scope.

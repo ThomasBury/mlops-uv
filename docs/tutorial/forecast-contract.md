@@ -54,6 +54,9 @@ the records available. A match date alone does not establish availability.
 
 ## Try the contract on five fixtures
 
+Alex was ranked 30 at noon. At 12:30 the feed corrected his rank to 28.
+Which value belongs in the noon forecast? Write it down before opening the answer key.
+
 Every fixture below was listed before its cutoff as an in-scope match on
 clay between Alex Silva (`P01`) and Robin Novak (`P02`). For `F01`, draw this
 timeline. All times are UTC on 2030-06-10 unless stated otherwise.
