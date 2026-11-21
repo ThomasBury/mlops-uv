@@ -7,7 +7,7 @@ lessons, you use a tennis match predictor to practice reproducible training,
 evaluate models on later data, and serve, diagnose, and package a model-backed API.
 
 AceBet is the Python application you work on throughout the tutorial.
-**[Start the ten-lesson tutorial](https://thomasbury.github.io/mlops-uv/tutorial/).**
+**[Start the ten-lesson tutorial](https://mlops-uv-tutorial.bury-thomas.workers.dev/tutorial/).**
 
 ## Quickstart
 
@@ -34,12 +34,12 @@ of the 2018 Brasil Open final. The response's `model.sha256` is the fingerprint
 of the model file that answered. Compare it with `model_sha256` in the
 [committed promotion record](https://github.com/ThomasBury/mlops-uv/blob/main/src/acebet/data/promoted_model.json)
 to verify that the API served the packaged model. See the
-[full request and response](https://thomasbury.github.io/mlops-uv/api/sync-endpoints/).
+[full request and response](https://mlops-uv-tutorial.bury-thomas.workers.dev/api/sync-endpoints/).
 
 The `just` commands are shortcuts for getting started. The tutorial walks
 through the underlying workflow and explains what the shortcuts run. The
-[setup guide](https://thomasbury.github.io/mlops-uv/getting-started/) and
-[developer workflow guide](https://thomasbury.github.io/mlops-uv/uv/uv-workflows-for-mlops/)
+[setup guide](https://mlops-uv-tutorial.bury-thomas.workers.dev/getting-started/) and
+[developer workflow guide](https://mlops-uv-tutorial.bury-thomas.workers.dev/uv/uv-workflows-for-mlops/)
 cover the commands in more detail.
 
 Licensed under Apache 2.0.
