@@ -1,4 +1,4 @@
-# Classical MLOps and ML Engineering
+# [Classical MLOps and ML Engineering](https://mlops-uv-tutorial.bury-thomas.workers.dev/tutorial/)
 
 ![AceBet logo showing a tennis court and an orange ball](https://raw.githubusercontent.com/ThomasBury/mlops-uv/main/docs/images/acebet-mark.svg)
 
