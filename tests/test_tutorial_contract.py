@@ -307,7 +307,9 @@ def test_ci_permissions_action_pins_and_dependabot_contract():
     assert "actions/upload-artifact@" in build_job
     assert "needs: build" in deploy_job
     assert "actions/download-artifact@" in deploy_job
-    assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" in deploy_job
+    assert (
+        "github.event_name == 'push' && github.ref == 'refs/heads/main'" in deploy_job
+    )
     assert "name: cloudflare-production" in deploy_job
     assert "secrets.CLOUDFLARE_ACCOUNT_ID" in deploy_job
     assert "secrets.CLOUDFLARE_API_TOKEN" in deploy_job
