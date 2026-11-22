@@ -26,10 +26,11 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
-      - name: Check the locked forecast workflow
-        run: |
-          uv sync --locked --python 3.12 --group mlops --extra tracing
-          just forecast-test
+      - name: Run standalone forecast tests
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: just forecast-test
+      - name: Rehearse release decisions in a temporary registry
+        run: just forecast-release-test
       - name: Build and replay a candidate
         run: just forecast-candidate "$RUNNER_TEMP/forecast"
       - name: Verify the checkout stayed unchanged
