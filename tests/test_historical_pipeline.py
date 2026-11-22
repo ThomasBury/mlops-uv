@@ -2,12 +2,14 @@
 
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
+from hashlib import sha256
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from acebet.dataprep import historical_results
 from acebet.dataprep.historical_replay import (
     WinnerCorrection,
     development_scores,
@@ -28,19 +30,23 @@ SNAPSHOT = Path(__file__).resolve().parents[1] / "data/raw/valuebetennis-2021-at
 
 def test_rebuild_preserves_source_and_reproduces_canonical_content(tmp_path):
     output = tmp_path / "matches.parquet"
+    rebuilt = tmp_path / "rebuilt.parquet"
     raw = SNAPSHOT.read_bytes()
     first = build_results(SNAPSHOT, output)
     matches = read_results(output)
     assert (
-        build_results(SNAPSHOT, output)
+        build_results(SNAPSHOT, rebuilt)
         == first
         == {
             "source_sha256": "ca16daa1c89b085680152dc41924cad7e2791775c23d68a083c2c0237cdf0598",
             "content_sha256": "2336bd8a6d63d2f88919b3956423183c5f33c1d09ad913acdc9255c82c83b71d",
             "rows": 1856,
+            "input_rows": 2091,
+            "duplicate_rows": 0,
+            "excluded_rows": 235,
         }
     )
-    assert read_results(output) == matches
+    assert read_results(rebuilt) == matches
     first_match = next(row for row in matches if row.match_id == "369751")
     assert (first_match.p1_id, first_match.p2_id, first_match.label) == (
         "12066",
@@ -76,6 +82,26 @@ def test_raw_repeats_conflicts_and_incomplete_scores():
         normalize_results(header + row.replace(b";12066;", b";9837;"))
     with pytest.raises(ValueError, match="Unexpected Valuebetennis CSV columns"):
         normalize_results(header.replace(b"joueur1_id", b"bad_header") + row)
+
+
+def test_preparation_report_counts_repeats_separately_from_exclusions(
+    tmp_path, monkeypatch
+):
+    header, row, *_ = SNAPSHOT.read_bytes().splitlines(keepends=True)
+    incomplete = row.replace(b"369751;", b"369799;", 1).replace(
+        b'"6-0 6-4"', b'"6-0 3-1"'
+    )
+    raw = header + row + row + incomplete + incomplete
+    snapshot = tmp_path / "snapshot.csv"
+    snapshot.write_bytes(raw)
+    monkeypatch.setattr(historical_results, "SNAPSHOT_SHA256", sha256(raw).hexdigest())
+
+    report = build_results(snapshot, tmp_path / "matches.parquet")
+
+    assert report["input_rows"] == 4
+    assert report["rows"] == 1
+    assert report["duplicate_rows"] == 2
+    assert report["excluded_rows"] == 1
 
 
 def test_changed_input_or_availability_makes_old_output_stale(tmp_path):
