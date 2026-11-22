@@ -94,6 +94,7 @@ broken_pid=$!
 curl -fsS --retry 12 --retry-connrefused http://127.0.0.1:8012/healthz
 curl -sS -o "$work/unready.json" -w '%{http_code}\n' http://127.0.0.1:8012/readyz
 kill "$broken_pid"
+wait "$broken_pid" || test "$?" -eq 143
 ```
 
 Liveness returns 200 because the process can answer. Readiness returns 503 because the service detected the changed model. Look for `forecast_assets_invalid` in the log. Keep both successful HTTP replies for the [runtime comparison](./reproduce-the-forecast-runtime.md).

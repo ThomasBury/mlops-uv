@@ -1,6 +1,6 @@
 # Authenticated packaged API
 
-This app serves the Fognini–Jarry example. For `POST /forecast`, use the [historical request and response schema](../reference/historical-forecast.md#requests-and-responses).
+The packaged app serves the Fognini–Jarry example. The separate historical service exposes `POST /forecast`. See its [request and response schema](../reference/historical-forecast.md#requests-and-responses).
 
 ## Start And Authenticate
 

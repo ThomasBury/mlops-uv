@@ -16,7 +16,7 @@ These interfaces operate on the 2021 replay. The offline entry point and the loc
 {"fixture_id":"F01","p1_id":"P01","p2_id":"P02","surface":"Clay","cutoff":"2030-06-10T12:00:00Z"}
 ```
 
-The reply echoes the normalized request. `p1_win_probability` is for the first requested ID. `elo_gap` is that player’s rating minus the opponent’s. `model_sha256` identifies the fitted pipeline bytes. `history_sha256` covers the canonical results. `feature_state_sha256` covers the F01 trace or, for an archived fixture, the history replayed at the stated cutoff.
+The reply echoes the normalized request. `p1_win_probability` is for the first requested ID. `elo_gap` is that player’s rating minus the opponent’s. `model_sha256` identifies the fitted pipeline bytes. `history_sha256` covers the full canonical results. For F01, `feature_state_sha256` covers the trace. For archived fixtures, it equals `history_sha256` and stays the same across cutoffs that use the same history.
 
 | Method | Path | Result |
 | --- | --- | --- |

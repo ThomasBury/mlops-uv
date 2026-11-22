@@ -2,7 +2,7 @@
 
 The authenticated predictor replays the 2018 Fognini–Jarry final from **prepared Feather data**. The production dataset has 44,617 rows. The original production source and complete transformation history are unavailable. A separate 100-row raw sample lets you inspect how match context and player state are derived. [Download the starter notebook](../assets/notebooks/01-starter-feature-and-training-flow.ipynb) · [Run the packaged predictor](../getting-started.md)
 
-Run `just data-check-sample` to rebuild the small sample into temporary storage and `just notebook-check` to execute the notebook without overwriting it. `just train-check` compares the constant, Elo and LightGBM candidates on prepared data. The standard recipes also score them on a later period. A wheel user supplies a prepared Feather file with `--data-path` and a writable `--output-dir` for export.
+Run `just data-check-sample` to rebuild the small sample into temporary storage and `just notebook-check` to execute the notebook without overwriting it. `just train-check` compares the constant, Elo and LightGBM candidates on prepared data. The standard recipes also score them on a later period. To export from a wheel install, run `python -m acebet.train.train` with `--export-joblib`, `--data-path` pointing to prepared Feather data, and a writable `--output-dir`.
 
 ## Which matches informed selection?
 
