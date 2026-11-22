@@ -72,6 +72,9 @@ forecast-evaluate $results $bundle:
 # Checks cutoff behavior, evaluation, HTTP parity, monitoring, and rollback.
 forecast-test:
     {{forecast_uv}} pytest tests/test_forecast.py tests/test_historical_pipeline.py tests/test_historical_evaluation.py tests/test_historical_serving.py
+# Rehearses registry approval, activation, and rollback in a temporary SQLite database.
+forecast-release-test:
+    {{forecast_uv}} pytest course/test_m9_registry.py
 # Serves a trusted frozen bundle and its matching history on localhost.
 forecast-serve $results $bundle $port="8000":
     ACEBET_FORECAST_RESULTS="$results" ACEBET_FORECAST_BUNDLE="$bundle" \
