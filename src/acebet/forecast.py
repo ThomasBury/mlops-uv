@@ -24,10 +24,26 @@ def probability_for_first_player(
 
 
 def main() -> None:
-    """Print the synthetic F01 fixture's baseline forecast."""
-    argparse.ArgumentParser(description=main.__doc__).parse_args()
-    first_player_id, second_player_id = F01_PLAYERS
-    canonical_probability = 0.50
+    """Print a synthetic F01 forecast without loading model assets."""
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument("--reverse", action="store_true", help="Request P02 first.")
+    parser.add_argument(
+        "--canonical-probability",
+        type=float,
+        default=0.50,
+        help="Illustrative probability that P01 wins (default: %(default).2f).",
+    )
+    args = parser.parse_args()
+    first_player_id, second_player_id = (
+        F01_PLAYERS[::-1] if args.reverse else F01_PLAYERS
+    )
+    try:
+        probability = probability_for_first_player(
+            first_player_id, second_player_id, args.canonical_probability
+        )
+    except ValueError as error:
+        parser.error(str(error))
+
     print(
         json.dumps(
             {
@@ -35,9 +51,7 @@ def main() -> None:
                 "cutoff": F01_CUTOFF,
                 "p1_id": first_player_id,
                 "p2_id": second_player_id,
-                "p1_win_probability": probability_for_first_player(
-                    first_player_id, second_player_id, canonical_probability
-                ),
+                "p1_win_probability": probability,
             }
         )
     )
