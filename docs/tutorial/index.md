@@ -1,83 +1,22 @@
----
-title: Tutorial
-description: Train, promote, serve, and diagnose a tennis prediction in ten hands-on lessons.
-hide:
-  - toc
----
+# Lessons { #tutorial }
 
-# From training data to a running prediction service { #tutorial }
+Start with basic Python and an understanding of fitting a classifier. You can do the first lesson with a pencil. From lesson 2 onward, keep the same checkout and scratch directory. Use Python 3.12, Git, uv and a Unix-style shell. You will need curl for HTTP, Docker Engine with Buildx for the runtime exercise (or native Podman on Linux), and just for the final automation.
 
-Give a colleague a running tennis predictor. Show which model answered a
-request and explain what you would inspect if the result looked wrong.
-
-The [forecast contract exercise](./forecast-contract.md) asks what a pre-match
-probability should mean and which information it may use. It runs by hand
-and with Python's standard library. Then [replay the same fixture from an
-installed package](./reproduce-the-fixture.md) and [rebuild the match history
-available at its cutoff](./rebuild-match-history.md). Use that history to
-[test whether a fitted model improves on Elo](./evaluate-a-forecast.md) and
-[serve the frozen forecast offline, over HTTP, and in Docker](./serve-the-frozen-forecast.md).
-Then [diagnose a slow request, score delayed results, and rehearse rollback](./diagnose-and-roll-back-a-forecast.md).
-Finish by [automating the candidate run and auditing its evidence](./automate-and-audit-a-forecast.md).
-
-For example, here are three fields from a response for Fognini against Jarry.
-The packaged default supplies this example. Your own export will have a
-different version.
-
-```json
-{
-  "p1_win_probability": 0.768387902579221,
-  "model": {"version": "model_2026-08-02-12-59-07"},
-  "feature_freshness": {"p1_as_of_date": "2018-03-04"}
-}
-```
-
-- `p1_win_probability` gives Fognini about a 77% chance of winning.
-- `model.version` identifies the saved model. The full response also includes
-  a checksum, a fingerprint of the model file.
-- `p1_as_of_date` dates the rank and Elo rating used for Fognini. Elo is a
-  rating based on past match results. This example replays the known
-  Brasil Open final using snapshots from the same match row on the last
-  date in the dataset.
-
-## Before you start
-
-Install Git, Python 3.12, `uv`, `just`, and `curl`. Use a fresh checkout of
-the [AceBet repository](https://github.com/ThomasBury/mlops-uv). The commands
-assume a Unix-style shell and start from the repository root.
-You will need a running Docker engine for the frozen forecast exercise,
-lesson 9, and the live container check in lesson 10. Port 8000 needs to be
-free for the local API and, later, the container in the ten-lesson walkthrough.
+Follow Alex and Robin in **F01**, a small synthetic fixture whose inputs you can check by hand. The 2021 archive supplies the training population and a second, real replay. Each lesson hands something to the next.
 
 ## Read in order { #read-in-order }
 
-| Lesson | Decision you can make when you finish |
-| --- | --- |
-| [1. Recreate the working environment](./00-recreate-the-working-environment.md) | Which command verifies that the checkout can read its training input? |
-| [2. Establish what a prediction needs](./01-notebook-to-data-contract.md) | Is there enough player information to build the request's model inputs? |
-| [3. Make a training decision reproducible](./02-feature-contract-training-and-export.md) | Which candidate should serve, given the recorded comparison? |
-| [4. Choose the bundle the service may load](./03-reproducibility-versioning-and-dependencies.md) | Which saved files can the service load? |
-| [5. Serve one prediction](./04-serving-async-and-monitoring.md) | Did this response come from your promoted bundle? |
-| [6. Explain a rejected request](./05-authentication-authorization-and-access-boundaries.md) | What should the caller fix after a rejection? |
-| [7. Investigate a running service](./06-observability-logging-metrics-and-traces.md) | What evidence answers questions about the request, its inputs, and forecast quality? |
-| [8. Hand the application to another Python user](./08-hand-the-application-to-another-python-user.md) | What does a colleague receive when they install the wheel? |
-| [9. Reproduce the service runtime](./09-reproduce-the-service-runtime.md) | Did Docker serve the same bundle as the local process? |
-| [10. Decide what to verify before release](./07-validation-ci-deployment-and-boundaries.md) | Which check would settle a suspected model mix-up? |
+| Lesson | What you start with and what you make | How to check it |
+| --- | --- | --- |
+| [1. Define a pre-match probability](./forecast-contract.md) | A reader names two players before play. Decide which outcome the number describes and when you can score it. | Classify five fixtures and expose the winner-first shortcut. |
+| [2. Put the forecast in a Python package](./reproduce-the-fixture.md) | Turn the hand calculation into a command another Python user can import and run. | Install outside the source tree and reverse 0.70 to 0.30. |
+| [3. Rebuild the match dataset](./rebuild-match-history.md) | Turn a pinned results CSV into identified, validated Parquet rows. | Recover 1,856 matches twice and challenge a duplicate ID. |
+| [4. Build features from what was known](./build-point-in-time-features.md) | Reconstruct the ratings available when the reader asked. | Compute F01 by hand, admit its winner early, then try a late correction. |
+| [5. Train under deployment conditions](./train-under-deployment-conditions.md) | Choose a validation population and fit preprocessing on each earlier window. | Inspect dates and compare the scaler means 2.694 and 4.152. |
+| [6. Freeze a candidate and judge the evidence](./evaluate-a-forecast.md) | Use the development folds to select one setting and freeze its fitted model. | Recompute paired loss for 369 fixtures and interpret nine weeks of evidence. |
+| [7. Serve the frozen forecast](./serve-the-frozen-forecast.md) | Give offline and HTTP callers the same checked model and history. | Compare two replies and diagnose a live process that cannot forecast. |
+| [8. Reproduce the service on another machine](./reproduce-the-forecast-runtime.md) | Put the fitted pipeline and its input history inside a runtime image. | Build from your own bundle and replay both fixtures without host mounts. |
+| [9. Investigate a forecast after serving](./diagnose-and-roll-back-a-forecast.md) | Trace one request, then join recorded forecasts to results as they arrive. | Locate a delay and advance the clock for fixture 424816. |
+| [10. Decide what a scheduled run may change](./automate-and-audit-a-forecast.md) | Apply the release rule, restore a known pair of assets and automate the checks. | Explain a rejected promotion and independently diagnose an unfamiliar forecast. |
 
-## What this walkthrough establishes { #lifecycle }
-
-You start with prepared historical data, compare models on one later period,
-and finish with a locally tested service. Establishing the original data
-source and how each input was available at prediction time takes more evidence.
-Judging future forecasts takes predictions recorded before matches and their
-later results. Operating a live deployment is separate work. See
-[Tutorial Boundaries](../tutorial-shortcuts-vs-production.md).
-
-## Where to look up details { #implementation-map }
-
-Use [Training and Inference](../user-guide/training-and-inference.md) for the
-shared inputs and evaluation, [Model Artifacts and Promotion](../user-guide/model-artifacts-and-promotion.md)
-for the bundle and its validation, and [API Endpoints](../api/sync-endpoints.md)
-for complete requests and responses. The optional
-[starter notebook](../assets/notebooks/01-starter-feature-and-training-flow.ipynb)
-uses a 100-row sample to show transformations and model comparison in memory.
+Use the [historical command and artifact reference](../reference/historical-forecast.md) to look up a schema, inspect a failed run or repeat the full numerical comparison. The [packaged quickstart](../getting-started.md) reproduces a separate 2018 prediction.

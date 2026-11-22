@@ -5,7 +5,9 @@ description: Reference the Python matrix, integration coverage, notebook executi
 
 # CI/CD
 
-AceBet has a main validation workflow and one documentation workflow.
+## Historical forecast workflow
+
+`.github/workflows/forecast.yaml` runs `just forecast-test` and `just forecast-candidate` under Python 3.12. Pull requests, pushes to main, manual dispatch and Mondays at 06:23 UTC trigger a run. The job checks for a clean checkout and uploads the Parquet history, frozen bundle and validation record as `historical-forecast`. An inconclusive comparison can complete this job successfully. Approval and starting a service are separate actions. [Release decision exercise](../tutorial/automate-and-audit-a-forecast.md)
 
 ## Main Workflow
 
@@ -43,7 +45,7 @@ uv sync --locked --dev
 ```
 
 Relevant pull requests build a clean Zensical site with read access and check
-the lesson bookmark, privacy link, search index and downloadable notebook.
+the lesson bookmark, static redirects, privacy link, search index and downloadable notebook.
 On relevant pushes to `main`, the build uploads that checked `site/` directory.
 The deployment job downloads it, confirms the target Cloudflare subdomain and
 publishes the same files with Wrangler. Only this job uses the

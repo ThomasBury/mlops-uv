@@ -45,7 +45,11 @@ uv sync --locked --extra tracing
 tooling and installs the project into the portable virtual environment copied
 by Docker.
 
-## Stable Contributor Commands
+## Historical forecast commands
+
+`just forecast-test` runs the cutoff, fitting, serving, monitoring and recovery checks. `just forecast-candidate RUN` creates a new reviewed historical bundle. `just forecast-promote RUN` applies the explicit Elo gate. To run one step, look up `forecast-prepare`, `forecast-train`, `forecast-evaluate` or `forecast-serve` in `just --list`. [Manual commands and artifacts](../reference/historical-forecast.md)
+
+## Packaged predictor and repository checks
 
 ```bash
 just data-check
@@ -57,9 +61,7 @@ just review
 just docker-smoke
 ```
 
-Use `just` in documentation whenever a maintained recipe exists. Use direct
-`uv run ...` for package/CLI inspection or a one-off operation whose exact
-invocation is the subject.
+The lessons introduce the underlying commands before automating them. In contributor code, document public arguments, return values and failure cases when they affect callers.
 
 `just review` is non-mutating and Docker-independent. Commands named
 `refresh-*`, `train-local`, `promote-local`, or `rebuild-artifacts`

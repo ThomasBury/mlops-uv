@@ -1,9 +1,4 @@
----
-title: Define the forecasting problem
-description: Define a pre-match tennis forecast and check when its inputs and result are available.
----
-
-# Define the forecasting problem
+# 1. Define a pre-match probability
 
 A tennis reader comparing two named players before a match wants the
 probability that the first player they name wins. If Alex Silva has a 70%
@@ -11,9 +6,7 @@ chance, the reader should still expect Alex to lose some matches with forecasts
 like this one. A betting decision would also require prices, costs, and a rule
 for deciding when to act.
 
-This contract defines the forecast for the tutorial rebuild. The examples
-below are synthetic. The [current bundled predictor](../tutorial-shortcuts-vs-production.md)
-has its own data and timing boundaries.
+The five fixtures below are synthetic. In the later 2021 replay, the archive contains settled results. A result’s release time has to be assumed.
 
 ## Define the row and the result
 
@@ -58,18 +51,20 @@ Alex was ranked 30 at noon. At 12:30 the feed corrected his rank to 28.
 Which value belongs in the noon forecast? Write it down before opening the answer key.
 
 Every fixture below was listed before its cutoff as an in-scope match on
-clay between Alex Silva (`P01`) and Robin Novak (`P02`). For `F01`, draw this
+clay between Alex Silva (`P01`) and Robin Novak (`P02`). For `F01`, read this
 timeline. All times are UTC on 2030-06-10 unless stated otherwise.
 
-| Time | Event |
-| --- | --- |
-| June 9, 18:00 | Schedule and clay surface are announced. Alex's ranking is published as 30. |
-| 11:00 | The source publishes an earlier match result for Robin. |
-| 12:00 | Record the `F01` forecast using this cutoff. Alex is first in the evaluation row. |
-| 12:30 | The source corrects Alex's ranking to 28. |
-| 13:00 | `F01` starts. |
-| 14:50 | `F01` finishes. |
-| 15:10 | The source publishes Alex as the official winner. |
+<figure class="course-figure">
+<ol class="course-flow">
+<li><strong>June 9, 18:00</strong><br>Clay announced. Alex ranked 30.</li>
+<li><strong>11:00</strong><br>Robin’s earlier result arrives.</li>
+<li><strong>12:00 cutoff</strong><br>Record the forecast for Alex.</li>
+<li><strong>12:30</strong><br>Alex’s rank is corrected to 28.</li>
+<li><strong>13:00–14:50</strong><br>Play begins and ends.</li>
+<li><strong>15:10</strong><br>The official winner becomes observable.</li>
+</ol>
+<figcaption>F01 on June 10, 2030 (UTC). Read up to noon to make the forecast. Read up to the reporting time to decide whether you can score it.</figcaption>
+</figure>
 
 The other forecasts use a 12:00 UTC cutoff on their respective match dates.
 Read each case at 16:00 UTC on that date. Each status shown was published
@@ -114,18 +109,15 @@ learn from the first version without learning anything about tennis?
 Start with a **baseline**, a simple forecast to compare against. Use `0.50`
 for either player in this exercise. Later, estimate the constant baseline
 from the fraction of first-player wins in the fitting period, then score it
-on the same later fixtures as the model. The [current model comparison](./02-feature-contract-training-and-export.md#canonical-candidate-evidence)
-already uses this fitting-period baseline and log loss.
+on the same later fixtures as the model.
 
 **Probability quality.** For each scorable match, log loss is the negative
 natural logarithm of the probability assigned to the outcome that happened.
 Average it across the scorable matches. Lower is better. For `F01`, the
 baseline assigns `0.50` to Alex's win. For `F02`, it assigns `1 - 0.50` to
-Robin's win. Run the calculation with Python 3 from any directory.
+Robin's win.
 
-```bash
-python -c 'from math import log; print(f"{(-log(0.50) - log(1 - 0.50)) / 2:.4f}")'
-```
+With a calculator, take the negative natural logarithm of 0.5. Both matches contribute that same loss.
 
 Expect `0.6931`. Use **calibration** as a diagnostic. Among many forecasts
 near 70%, check whether roughly 70% of the corresponding first players won.

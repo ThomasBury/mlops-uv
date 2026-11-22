@@ -1,15 +1,25 @@
----
-title: Model Artifacts And Promotion
-description: Inspect AceBet schema-v2 bundles, checksum validation, and explicit local promotion.
----
+# Packaged model and data record
 
-# Model Artifacts And Promotion
+The authenticated predictor replays the 2018 Fognini–Jarry final from **prepared Feather data**. The production dataset has 44,617 rows. The original production source and complete transformation history are unavailable. A separate 100-row raw sample lets you inspect how match context and player state are derived. [Download the starter notebook](../assets/notebooks/01-starter-feature-and-training-flow.ipynb) · [Run the packaged predictor](../getting-started.md)
 
-AceBet exports a model only after comparing a constant baseline, the prepared
-Elo probability, and LightGBM on the same date-grouped temporal selection
-holdout. The constant candidate is comparison-only. The standard training
-recipes also score all three fitted candidates on a separate, later window
-after the selection decision.
+Run `just data-check-sample` to rebuild the small sample into temporary storage and `just notebook-check` to execute the notebook without overwriting it. `just train-check` compares the constant, Elo and LightGBM candidates on prepared data. The standard recipes also score them on a later period. To export from a wheel install, run `python -m acebet.train.train` with `--export-joblib`, `--data-path` pointing to prepared Feather data, and a writable `--output-dir`.
+
+## Which matches informed selection?
+
+| Use | Rows | Date range |
+| --- | ---: | --- |
+| Fit candidates | 3,482 | 2015-03-12 through 2016-06-19 |
+| Compare candidates | 1,754 | 2016-06-20 through 2017-03-04 |
+| Evaluate after selection | 2,630 | 2017-03-05 through 2018-03-04 |
+
+Keeping an entire date on one side of the split makes the fitting period
+strictly earlier. After selection, training scores the same fitted candidates
+on the third period. Elo log loss rises from 0.6021 on the selection holdout
+to 0.6295 in that later window. Find both results in the model card and the
+later metrics under `post_selection` in the metadata.
+
+
+The cutoff moves to the beginning of its calendar date. The historical LightGBM tuning window was unrecorded, so earlier exposure to the later evaluation period is unknown.
 
 ## Selection policy
 
@@ -26,11 +36,11 @@ visible diagnostics but cannot override it.
 
 Equality at either boundary passes. The canonical window currently selects Elo:
 
-| Candidate | Log loss |
-|---|---:|
-| Constant | 0.6931 |
-| Elo | 0.6021 |
-| LightGBM | 0.6181 |
+| Candidate | Accuracy | Log loss | Brier score | ROC AUC |
+| --- | ---: | ---: | ---: | ---: |
+| Constant | 0.5006 | 0.6931 | 0.2500 | 0.5000 |
+| Elo | 0.6762 | 0.6021 | 0.2066 | 0.7410 |
+| LightGBM | 0.6631 | 0.6181 | 0.2138 | 0.7239 |
 
 ## Bundle schema v2
 
@@ -79,6 +89,8 @@ just rebuild-artifacts models
 just serve-with-assets
 ```
 
+This explicit rebuild refreshes project and packaged player-state files. For a scratch export use `just train-local`, then `just promote-local` to write a local pointer.
+
 Promotion writes `models/promoted_model.json`. Schema v2 binds the three
 filenames to the selected model kind, recorded training version, model SHA-256,
 metadata SHA-256, model-card SHA-256, and selection reason. Promotion recomputes
@@ -123,3 +135,89 @@ reason, but no selected model or bundle.
 
 MLflow is experiment tracking here; the checksum-bound local promotion pointer
 remains the serving source of truth.
+
+
+## Feature Contract
+
+Training and serving share one ordered allowlist:
+
+| Position | Type | Column |
+| ---: | --- | --- |
+| 1 | numeric | `best of` |
+| 2 | numeric | `rank_p1` |
+| 3 | numeric | `rank_p2` |
+| 4 | numeric | `elo_p1` |
+| 5 | numeric | `elo_p2` |
+| 6 | numeric | `proba_elo` |
+| 7 | numeric | `year` |
+| 8 | numeric | `month` |
+| 9 | numeric | `day` |
+| 10 | numeric | `rank_diff` |
+| 11 | categorical | `p1` |
+| 12 | categorical | `p2` |
+| 13 | categorical | `series` |
+| 14 | categorical | `court` |
+| 15 | categorical | `surface` |
+| 16 | categorical | `round` |
+| 17 | categorical | `best_ranked` |
+
+`select_model_features(...)` returns exactly this order and silently discards
+every unrelated raw column. If any required column is absent, training or
+prediction fails before fit/scoring with all missing names in the error. Feature
+alignment never creates a missing column or pads it with `pd.NA`.
+
+The preprocessing `ColumnTransformer` passes the 10 numeric values through
+unchanged. It applies `OrdinalEncoder` only to the 7 categorical fields and
+marks those codes as unordered categories for LightGBM's native categorical
+splits. Unknown categories are accepted at prediction time and handled as
+missing categories. Legacy artifacts that ordinal-encoded the entire dataframe,
+or that expose a different feature order, fail during loading.
+
+Derived and online behavior remains shared:
+
+- The raw builder derives `proba_elo` from raw ELO columns.
+- Online inference recomputes `proba_elo` from the latest player ELO values.
+- Date derives `year`, `month`, and `day`, then remains outside the model.
+- Request field `best_of` becomes the internal `"best of"` feature.
+- Online scoring requires explicit `series`, `court`, `surface`, `round`,
+  and `best_of`; it has no silent match-context defaults.
+- Legacy `atp`, `location`, and `tournament` request fields are rejected.
+
+
+## Elo timing probe
+
+
+The prepared file contains Elo ratings and odds supplied by the upstream data.
+The original rating code and point-in-time records are unavailable. Across
+75,072 pairs of consecutive appearances by the same player, excluding dates
+with multiple appearances by that player, Elo rose after 99.99% of wins and
+fell after 99.91% of losses. The change aligned with the next match’s outcome
+in 47.91% of wins and 50.21% of losses. This pattern is consistent with the
+current row storing a rating from before its own match.
+
+Across 32,663 matches with valid Pinnacle prices, Elo log loss was 0.6029
+and the price-implied baseline was 0.5655 after normalizing inverse odds to
+sum to one. Their probability correlation was 0.8716. These checks support
+the pre-match interpretation. They leave the upstream generation and timing
+of ranks and other inputs unverified.
+
+```bash
+uv run python -c 'from acebet.dataprep.dataprep import prepare_data, summarize_elo_causal_evidence; print(summarize_elo_causal_evidence(prepare_data()))'
+```
+
+## Serving state
+
+- With no overrides, production uses the packaged promoted bundle and packaged
+  `latest_player_stats.feather` for zero-setup serving.
+- `ACEBET_MODEL_DIR` overrides only the production model directory and requires
+  `promoted_model.json` there.
+- `ACEBET_DATA_DIR` overrides only the production data directory and requires
+  `latest_player_stats.feather` there.
+- Production startup checks the player-state SHA-256 recorded by training.
+  To serve an older bundle with directory overrides, set
+  `ACEBET_PLAYER_STATS_SHA256` to the digest of its trusted player-state file.
+- Testing always uses packaged sample player state and the packaged promoted
+  model, regardless of production overrides.
+
+
+Set `ACEBET_MAX_SNAPSHOT_AGE_DAYS` to reject snapshots older than your limit. With it unset, the service logs a warning for snapshots older than 60 days. Age cannot establish forecast quality. [Exact request and response](../api/sync-endpoints.md)

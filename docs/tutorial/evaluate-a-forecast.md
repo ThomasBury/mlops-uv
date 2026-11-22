@@ -1,63 +1,6 @@
----
-title: Decide whether a forecast improves on Elo
-description: Compare models in chronological order, freeze a candidate, and test it on later matches.
----
+# 6. Freeze a candidate and judge the evidence
 
-# Decide whether a forecast improves on Elo
-
-You have [match results and pre-match Elo ratings](./rebuild-match-history.md).
-Should you replace Elo with a model that learns from the Elo gap and court
-surface? Use earlier matches to choose the candidate and later matches to
-check whether the improvement holds up. Keep [F01](./forecast-contract.md) as
-a known input for replaying the fitted pipeline.
-
-## Compare on earlier matches
-
-From the checkout root, rebuild the M3 extract in a scratch directory. These
-commands assume the Python 3.12 environment from the previous lessons.
-
-```bash
-work="$(mktemp -d)"
-snapshot=data/raw/valuebetennis-2021-atp.csv
-uv run --locked python -m acebet.dataprep.historical_results "$snapshot" "$work/matches.parquet"
-uv run --locked python -m acebet.train.historical_evaluation compare "$work/matches.parquet"
-```
-
-The three validation periods are March–April, May–June, and July–August
-2021. In each fold, the training window starts at the beginning of the
-history and ends before validation starts. A match can train the model only
-if its label was already available at the fold boundary. A validation label
-can inform candidate selection only if it is available by the final cut on
-August 31 at `23:59:59 UTC`. These rules use M3's assumed result availability.
-Match IDs stay together, including all matches on the same event day within a
-validation window. Players can appear repeatedly because the question is how
-to forecast the next match, including matches between returning players.
-
-**First comparison.** Training prevalence predicts the fraction of training
-matches won by the player with the smaller ID. Elo converts the two ratings
-available at each fixture's cutoff into a probability. Logistic regression
-learns a probability from the Elo difference and surface. Each training fold
-fits its own scaler for the Elo gap and its own one-hot encoder for surface.
-The `Pipeline` fits both transformations before fitting the classifier, and
-reuses those transformations during validation. [scikit-learn on data leakage](https://scikit-learn.org/stable/common_pitfalls.html)
-
-**Second comparison.** Leaky Elo updates both ratings with the current winner
-and then scores that same match. Compare it with the repaired as-of Elo on
-the same validation fixtures. Mean log loss gives each fold equal weight.
-Lower values are better.
-
-| Development forecast | Mean fold log loss |
-| --- | ---: |
-| Training prevalence | 0.69381 |
-| As-of Elo | 0.67036 |
-| Logistic regression, default `C` | 0.68092 |
-| Elo after seeing the current winner | 0.58619 |
-
-Find `random_split_diagnostic` in the output. Its model used a training label
-that became available on August 31, after all 444 of its validation cutoffs.
-Its loss is about `0.66743`, calculated on a different set of matches. The
-timestamp comparison is the evidence that this split permits learning from
-the future.
+The first comparisons favor Elo. Can a different amount of regularization help logistic regression? Use the earlier folds to answer that question. Declare the final decision rule now so you cannot change it after seeing September’s results.
 
 ## Freeze the candidate and its record
 
@@ -71,7 +14,7 @@ the candidate better than Elo only if the entire paired interval for
 candidate minus Elo loss is below zero.
 
 ```bash
-uv run --locked --group mlops python -m acebet.train.historical_evaluation train \
+.venv/bin/python -m acebet.train.historical_evaluation train \
   "$work/matches.parquet" "$work/first"
 ```
 
@@ -80,36 +23,14 @@ has the lower development score. Keep the logistic candidate frozen for the
 final comparison. `search.csv` records the five trials using scikit-learn's
 negative log loss scorer, so higher values rank first in that file.
 
-`selection.json` records the source and canonical data hashes, code file
-hashes, installed package versions, settings, seed, development scores, and
-artifact hashes. `membership.csv` lists training and validation match IDs,
-event dates, forecast cutoffs, and label availability for each temporal
-fold and the deliberately flawed `random_diagnostic` split. The
-`final_refit` rows show what trained the frozen `model.joblib`, which includes
-the fitted scaler and encoder. Open `membership.csv` and trace a returning
-player across a fold boundary. Check the latest training-label timestamp
-against the earliest validation cutoff. Only load Joblib bundles you trust.
+The search uses `RandomizedSearchCV` with `cv=folds` and `refit=False`. Every trial fits the entire pipeline on each training window. After selecting the penalty, `train_candidate` fits a fresh pipeline once on all mature development rows. The saved `model.joblib` therefore includes a scaler and surface encoder fitted to that population. For F01 its estimate is 0.46910. Changing only the surface to an unseen category produces an all-zero surface encoding and an estimate of 0.47672.
 
-The `fixture` record carries the noon cutoff for F01, its contributing result,
-and the frozen model's `0.46910` win probability for player `P01` on clay.
-The second prediction changes only the surface to `Unseen`. Its surface
-encoding is all zeros and its probability is `0.47672`. The numeric Elo input
-still contributes. This demonstrates how the pipeline handles an unfamiliar
-category. F01 is synthetic and stays out of the historical scores.
-
-MLflow records this run in the local SQLite database `$work/mlflow.db` with
-copies of the artifacts under `$work/mlartifacts`. The UI is optional. The
-command below opens it at `http://127.0.0.1:5000`.
-[MLflow Tracking](https://mlflow.org/docs/latest/ml/tracking/)
-
-```bash
-uv run --locked --group mlops mlflow server --host 127.0.0.1 --backend-store-uri "sqlite:///$work/mlflow.db"
-```
+Open `first/search.csv` to see all five trials. Select one ID in `first/membership.csv` and follow its role through a fold and `final_refit`. `first/selection.json` links that record to the source and history hashes, code, dependency versions, chosen parameter and model bytes. Trust the producer before loading a Joblib file.
 
 ## Open the final period
 
 ```bash
-uv run --locked --group mlops python -m acebet.train.historical_evaluation evaluate \
+.venv/bin/python -m acebet.train.historical_evaluation evaluate \
   "$work/matches.parquet" "$work/first"
 ```
 
@@ -143,67 +64,43 @@ five fixed probability bins. For the logistic candidate, the `0.6` to
 for investigation. Inspect counts across all bins before diagnosing a
 systematic calibration problem.
 
-## Rebuild and reproduce the evidence
+## Check the decision from individual forecasts
 
-Declare the replay tolerances before retraining. The match IDs, labels, selected
-parameters, and calibration counts must agree exactly. Probabilities, scores,
-and interval endpoints must agree to an absolute tolerance of `1e-8` with
-zero relative tolerance. Use the same locked environment and check the
-recorded source and dependency identities. Artifact hashes identify a
-particular run's files. The numerical comparison is the repeatability check.
+The final run carries `selection_run_id` as a tag. Follow it back to the development search in MLflow. Both runs live in `$work/mlflow.db` and their artifacts under `$work/mlartifacts`. The selection run owns the fitted model and fold membership. The final run owns the row-level predictions and scores. Use the recorded winner in each row to check the difference independently.
 
-```bash
-uv run --locked --group mlops python -m acebet.dataprep.historical_results \
-  "$snapshot" "$work/rebuilt.parquet"
-uv run --locked --group mlops python -m acebet.train.historical_evaluation train \
-  "$work/rebuilt.parquet" "$work/repeat"
-uv run --locked --group mlops python -m acebet.train.historical_evaluation evaluate \
-  "$work/rebuilt.parquet" "$work/repeat"
-uv run --locked --group mlops python - "$work/first" "$work/repeat" <<'PY'
+Save this as `score-pairs.py` in your scratch directory.
+
+```python
 import json
 from pathlib import Path
 import sys
-
 import numpy as np
 import pandas as pd
+from mlflow import MlflowClient
 
-first, repeat = map(Path, sys.argv[1:])
-def pair(filename):
-    return [json.loads((path / filename).read_text()) for path in (first, repeat)]
+work = Path(sys.argv[1])
+bundle = work / "first"
+selection = json.loads((bundle / "selection.json").read_text())
+final = json.loads((bundle / "final/evaluation.json").read_text())
+client = MlflowClient(tracking_uri=f"sqlite:///{work}/mlflow.db")
+assert client.get_run(final["run_id"]).data.tags["selection_run_id"] == selection["run_id"]
+rows = pd.read_csv(bundle / "final/forecasts.csv")
+assert len(rows) == rows.match_id.nunique() == 369
 
-def close(left, right):
-    np.testing.assert_allclose(left, right, atol=1e-8, rtol=0)
+def loss(probability):
+    return -np.log(np.where(rows.label == 1, probability, 1 - probability))
 
-left, right = pair("selection.json")
-for key in ("data_sha256", "sources_sha256", "dependencies", "best_params", "config"):
-    assert left[key] == right[key], key
-for name in left["mean_log_loss"]:
-    close(left["mean_log_loss"][name], right["mean_log_loss"][name])
-for key in ("p1_win_probability", "logistic_p1_win_probability", "unseen_surface_p1_win_probability"):
-    close(left["fixture"][key], right["fixture"][key])
-pd.testing.assert_frame_equal(pd.read_csv(first / "membership.csv"), pd.read_csv(repeat / "membership.csv"))
-
-a, b = [pd.read_csv(path / "final/forecasts.csv") for path in (first, repeat)]
-pd.testing.assert_frame_equal(a[["match_id", "label"]], b[["match_id", "label"]])
-models = ["prevalence", "elo", "logistic_tuned"]
-close(a[models], b[models])
-left, right = pair("final/evaluation.json")
-for name in models:
-    close(left["log_loss"][name], right["log_loss"][name])
-    for observed, reproduced in zip(left["calibration"][name], right["calibration"][name]):
-        assert observed["matches"] == reproduced["matches"]
-        if observed["matches"]:
-            for key in ("mean_probability", "observed_win_rate"):
-                close(observed[key], reproduced[key])
-key = "log_loss_delta_candidate_minus_baseline"
-for name in ("prevalence", "elo"):
-    for metric in ("mean_delta", "interval_95"):
-        close(left[key][name][metric], right[key][name][metric])
-print("Reproduced F01 and 369 final forecasts within tolerance.")
-PY
+print((loss(rows.logistic_tuned) - loss(rows.elo)).mean())
+bins = pd.cut(rows.logistic_tuned, [0, .2, .4, .6, .8, np.inf], right=False)
+print(rows.groupby(bins, observed=False).agg(
+    matches=("label", "size"), forecast=("logistic_tuned", "mean"), wins=("label", "mean"),
+))
 ```
 
-For serving in M5, keep the frozen bundle, canonical history, and F01 trace
-together. Use the model and data hashes to identify what produced a forecast.
-The [serving exercise](./serve-the-frozen-forecast.md) uses this candidate
-while the comparison with Elo remains inconclusive.
+```bash
+.venv/bin/python "$work/score-pairs.py" "$work"
+```
+
+Do the counts support a claim about predictions above 80%? What would you do if someone wanted to tune `C` again after seeing this table? Reserve another later period for that new decision. These 369 matches are settled results, scored under the assumed release delay. Live schedule coverage and actual input arrival times remain unknown.
+
+Keep `first` and `matches.parquet` together for the [serving exercise](./serve-the-frozen-forecast.md). To repeat training independently, use the [full numerical comparison](../reference/historical-forecast.md#repeat-the-run).
