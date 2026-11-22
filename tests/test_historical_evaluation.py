@@ -1,5 +1,7 @@
 from dataclasses import replace
 from datetime import date, datetime, timezone
+import hashlib
+import json
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +10,12 @@ import pytest
 from sklearn.pipeline import Pipeline
 
 from acebet.dataprep.historical_replay import DEVELOPMENT_END, prior_day_cutoff
-from acebet.dataprep.historical_results import ingest_snapshot, normalize_results
+from acebet.dataprep.historical_results import (
+    build_results,
+    content_sha256,
+    ingest_snapshot,
+    normalize_results,
+)
 from acebet.train.historical_evaluation import (
     FEATURES,
     VALIDATION_STARTS,
@@ -16,18 +23,18 @@ from acebet.train.historical_evaluation import (
     development_results,
     evaluate_candidate,
     logistic_pipeline,
+    main,
     paired_week_interval,
     replay_frame,
     train_candidate,
 )
 
+SNAPSHOT = Path(__file__).resolve().parents[1] / "data/raw/valuebetennis-2021-atp.csv"
+
 
 @pytest.fixture(scope="module")
 def history():
-    snapshot = (
-        Path(__file__).resolve().parents[1] / "data/raw/valuebetennis-2021-atp.csv"
-    )
-    return normalize_results(ingest_snapshot(snapshot))
+    return normalize_results(ingest_snapshot(SNAPSHOT))
 
 
 def test_selection_excludes_late_labels_and_fits_preprocessing_on_each_training_window(
@@ -73,6 +80,52 @@ def test_selection_excludes_late_labels_and_fits_preprocessing_on_each_training_
         assert 0 < model.predict_proba(unseen)[0, 1] < 1
 
 
+def test_compare_exports_temporal_membership_and_shuffled_counterexample(
+    history, tmp_path, capsys
+):
+    results = tmp_path / "matches.parquet"
+    build_results(SNAPSHOT, results)
+    output = tmp_path / "comparison"
+    args = ["compare", str(results), "--output", str(output)]
+    main(args)
+    report = json.loads(capsys.readouterr().out)
+    assert report == json.loads((output / "comparison.json").read_text())
+    assert report["data_sha256"] == content_sha256(history)
+    assert report["development_sha256"] == content_sha256(development_results(history))
+    assert report["final_start"] == "2021-09-01"
+
+    membership = output / "membership.csv"
+    assert (
+        report["membership_sha256"]
+        == hashlib.sha256(membership.read_bytes()).hexdigest()
+    )
+    rows = pd.read_csv(membership, dtype={"match_id": str})
+    assert set(rows["split"]) == {"fold_1", "fold_2", "fold_3"}
+    assert not rows.duplicated(["split", "match_id"]).any()
+    assert set(rows["match_id"]) <= {
+        row.match_id for row in development_results(history)
+    }
+    counts = rows.groupby(["split", "partition"]).size().unstack()
+    assert counts["train"].is_monotonic_increasing
+    assert len(report["fold_log_loss"]) == 3
+
+    diagnostic = report["random_split_diagnostic"]
+    by_id = {row.match_id: row for row in history}
+    train = by_id[diagnostic["latest_training_match_id"]]
+    validation = by_id[diagnostic["earliest_validation_match_id"]]
+    cutoff = prior_day_cutoff(validation.event_date)
+    assert train.available_at > cutoff
+    assert (
+        diagnostic["latest_training_label_available_at"]
+        == train.available_at.isoformat()
+    )
+    assert diagnostic["earliest_validation_cutoff"] == cutoff.isoformat()
+
+    with pytest.raises(FileExistsError):
+        main(args)
+    assert json.loads((output / "comparison.json").read_text()) == report
+
+
 def test_paired_interval_counts_calendar_weeks_and_weights_matches():
     days = pd.Series([date(2021, 9, 5), date(2021, 9, 6), date(2021, 9, 12)])
     interval = paired_week_interval(np.array([1.0, -1.0, -1.0]), days)
@@ -93,11 +146,19 @@ def test_frozen_evaluation_scores_only_final_fixtures_and_logs_both_runs(
     assert selection["best_params"] == {"model__C": 0.3}
     assert selection["fixture"]["unseen_surface_encoding"] == [0, 0, 0]
     assert not (bundle / "final").exists()
-    membership = pd.read_csv(bundle / "membership.csv")
+    membership = pd.read_csv(bundle / "membership.csv", dtype={"match_id": str})
     random = membership.loc[membership["split"] == "random_diagnostic"]
-    latest = random.loc[random["partition"] == "train", "available_at"].max()
-    cutoffs = random.loc[random["partition"] == "validation", "cutoff"]
+    random_train = random.loc[random["partition"] == "train"].set_index("match_id")
+    random_valid = random.loc[random["partition"] == "validation"].set_index("match_id")
+    latest = random_train["available_at"].max()
+    cutoffs = random_valid["cutoff"]
     assert (cutoffs < latest).sum() == 444
+    diagnostic = selection["random_split_diagnostic"]
+    assert (
+        random_train.loc[diagnostic["latest_training_match_id"], "available_at"]
+        == latest
+    )
+    assert cutoffs.loc[diagnostic["earliest_validation_match_id"]] == cutoffs.min()
 
     def unexpected_fit(*args, **kwargs):
         pytest.fail("Final evaluation tried to fit a pipeline.")

@@ -52,7 +52,7 @@ MEMBERSHIP = ["match_id", "event_date", "available_at", "cutoff", "p1_id", "p2_i
 
 
 def replay_frame(results: Sequence[MatchResult], *, leak: bool = False) -> pd.DataFrame:
-    """Arrange M3 replay outputs for fitting and inspection."""
+    """Arrange historical replay outputs for fitting and inspection."""
     return pd.DataFrame.from_records(
         {
             "match_id": match.match_id,
@@ -109,6 +109,18 @@ def development_folds(frame: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]
     return folds
 
 
+def _fold_membership(
+    frame: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
+) -> list[pd.DataFrame]:
+    return [
+        frame.iloc[indices][MEMBERSHIP].assign(
+            split=f"fold_{number}", partition=partition
+        )
+        for number, (train_idx, valid_idx) in enumerate(folds, 1)
+        for partition, indices in (("train", train_idx), ("validation", valid_idx))
+    ]
+
+
 def logistic_pipeline() -> Pipeline:
     return Pipeline(
         [
@@ -160,7 +172,9 @@ def _comparison(
     random_model = logistic_pipeline().fit(
         random_train[FEATURES], random_train["label"]
     )
-    latest = random_train["available_at"].max()
+    latest_train = random_train.loc[random_train["available_at"].idxmax()]
+    earliest_valid = random_valid.loc[random_valid["cutoff"].idxmin()]
+    latest = latest_train["available_at"]
     report = {
         "fold_log_loss": fold_scores,
         "mean_log_loss": pd.DataFrame(fold_scores).mean().to_dict(),
@@ -174,7 +188,9 @@ def _comparison(
             "validation_rows_with_later_training_labels": int(
                 (random_valid["cutoff"] < latest).sum()
             ),
-            "earliest_validation_cutoff": random_valid["cutoff"].min().isoformat(),
+            "earliest_validation_match_id": earliest_valid["match_id"],
+            "earliest_validation_cutoff": earliest_valid["cutoff"].isoformat(),
+            "latest_training_match_id": latest_train["match_id"],
             "latest_training_label_available_at": latest.isoformat(),
         },
     }
@@ -243,6 +259,37 @@ def _write_json(path: Path, payload: dict) -> None:
     )
 
 
+def compare_development(
+    results: Sequence[MatchResult], output: Path | None = None
+) -> dict:
+    """Compare untuned forecasts and optionally save the fixed temporal folds."""
+    if output is not None and output.exists():
+        raise FileExistsError(output)
+    development = development_results(results)
+    frame = replay_frame(development, leak=True)
+    folds = development_folds(frame)
+    report, _ = _comparison(frame, folds)
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=output.parent) as temporary:
+            artifacts = Path(temporary) / output.name
+            artifacts.mkdir()
+            membership = artifacts / "membership.csv"
+            pd.concat(_fold_membership(frame, folds)).to_csv(membership, index=False)
+            report.update(
+                source_sha256=SNAPSHOT_SHA256,
+                data_sha256=content_sha256(results),
+                development_sha256=content_sha256(development),
+                validation_starts=[day.isoformat() for day in VALIDATION_STARTS],
+                final_start=DEVELOPMENT_END.isoformat(),
+                development_rows=len(development),
+                membership_sha256=sha256_file(membership),
+            )
+            _write_json(artifacts / "comparison.json", report)
+            artifacts.rename(output)
+    return report
+
+
 def _tracking_experiment(parent: Path):
     import mlflow
 
@@ -285,23 +332,16 @@ def train_candidate(results: Sequence[MatchResult], output: Path) -> dict:
     comparison, random_membership = _comparison(frame, folds)
     metrics = comparison["mean_log_loss"]
     metrics["logistic_tuned"] = -float(search.best_score_)
-    membership = [frame[MEMBERSHIP].assign(split="final_refit", partition="train")]
-    for number, (train_idx, valid_idx) in enumerate(folds, 1):
-        for partition, indices in (("train", train_idx), ("validation", valid_idx)):
-            membership.append(
-                frame.iloc[indices][MEMBERSHIP].assign(
-                    split=f"fold_{number}", partition=partition
-                )
-            )
+    refit_membership = frame[MEMBERSHIP].assign(split="final_refit", partition="train")
 
     output.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=output.parent) as temporary:
         bundle = Path(temporary) / output.name
         bundle.mkdir()
         joblib.dump(model, bundle / "model.joblib")
-        pd.concat([*membership, random_membership]).to_csv(
-            bundle / "membership.csv", index=False
-        )
+        pd.concat(
+            [refit_membership, *_fold_membership(frame, folds), random_membership]
+        ).to_csv(bundle / "membership.csv", index=False)
         trials = pd.DataFrame(search.cv_results_).filter(
             regex=r"^(params$|split\d+_test_score$|mean_test_score$|rank_test_score$)"
         )
@@ -480,13 +520,18 @@ def main(argv: Sequence[str] | None = None) -> None:
     for name in ("compare", "train", "evaluate"):
         subparser = commands.add_parser(name)
         subparser.add_argument("results", type=Path)
-        if name != "compare":
+        if name == "compare":
+            subparser.add_argument(
+                "--output",
+                type=Path,
+                help="Save comparison and fold membership in a new directory.",
+            )
+        else:
             subparser.add_argument("bundle", type=Path)
     args = parser.parse_args(argv)
     results = read_results(args.results)
     if args.command == "compare":
-        frame = replay_frame(development_results(results), leak=True)
-        report, _ = _comparison(frame, development_folds(frame))
+        report = compare_development(results, args.output)
     elif args.command == "train":
         report = train_candidate(results, args.bundle)
     else:
