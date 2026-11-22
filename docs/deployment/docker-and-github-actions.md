@@ -1,14 +1,13 @@
----
-title: Deployment
-description: Reference the exact Docker build, runtime, packaged assets, and authenticated smoke behavior.
----
+# Container targets
 
-# Deployment
+| Target | Assets and entry point | Runtime check |
+| --- | --- | --- |
+| `historical-forecast` | Named `forecast_assets` build context supplies `matches.parquet`, `selection.json` and `model.joblib`. Uvicorn serves `acebet.app.historical:create_app`. | Health check uses `/readyz`. Compare F01 and 424816 with offline and local HTTP replies. |
+| `release` (default) | Installed wheel supplies packaged state and the promoted Elo bundle. FastAPI serves `acebet.app.main:app`. | Health check uses `/healthz`. Smoke tests check readiness and authenticated prediction. |
 
-The repository builds and tests a container image. It does not deploy the
-application.
+For Docker Engine/Buildx and native Podman commands using your own historical assets, follow the [runtime lesson](../tutorial/reproduce-the-forecast-runtime.md). The remaining commands operate on the packaged predictor.
 
-## Build Versus Runtime Proof
+## Packaged smoke test
 
 ```bash
 just docker-build
@@ -96,17 +95,3 @@ just serve-with-assets
 `just docker-run-with-assets` mounts root `data/` and `models/` read-only and
 sets both directory variables to those mounts. `just docker-smoke` exercises
 both the immutable packaged fallback and an explicit read-only mounted override.
-
-## Why There Is No Compose File
-
-The image is a single long-running inference service. Training, documentation,
-promotion, and local MLflow logging are finite commands, so Compose would not
-orchestrate anything useful today. A future containerized trainer should be a
-separate build target or image. Introduce Compose when the local runtime
-needs multiple long-running containers, such as an external MLflow server,
-database, collector, or dashboard, with each dependency represented by its own
-service.
-
-The separate docs workflow publishes the static tutorial to Cloudflare. Centralized observability,
-registry infrastructure, orchestration, image scanning/signing, automated
-application deployment, rollout, and rollback remain explicitly out of scope.

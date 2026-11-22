@@ -17,7 +17,10 @@ from fastapi.testclient import TestClient
 import pytest
 
 from acebet.app.dependencies.auth import get_demo_users_db
+from acebet.app.historical import create_app as create_historical_app
 from acebet.app.main import create_app
+from acebet.dataprep.historical_replay import F01_SURFACE, worked_fixture
+from acebet.historical_forecast import ForecastRequest
 from acebet.settings import get_settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -94,8 +97,10 @@ def test_documented_canonical_response_matches_real_packaged_bundle(monkeypatch)
         assert response.status_code == 200
         payload = response.json()
         assert payload == _canonical_documented_response()
-        introduction = (TUTORIAL_DIR / "index.md").read_text(encoding="utf-8")
-        assert _first_json_example(introduction) == {
+        quickstart = (PROJECT_ROOT / "docs/getting-started.md").read_text(
+            encoding="utf-8"
+        )
+        assert _first_json_example(quickstart) == {
             "p1_win_probability": payload["p1_win_probability"],
             "model": {"version": payload["model"]["version"]},
             "feature_freshness": {
@@ -114,9 +119,6 @@ def test_documented_selection_and_bundle_match_committed_records():
     promotion_path = PACKAGE_DATA_DIR / "promoted_model.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     promotion = json.loads(promotion_path.read_text(encoding="utf-8"))
-    model_chapter = (
-        TUTORIAL_DIR / "02-feature-contract-training-and-export.md"
-    ).read_text(encoding="utf-8")
     artifact_guide = (
         PROJECT_ROOT / "docs/user-guide/model-artifacts-and-promotion.md"
     ).read_text(encoding="utf-8")
@@ -126,7 +128,7 @@ def test_documented_selection_and_bundle_match_committed_records():
         "train": 3482,
         "test": 1754,
     }
-    rows = _rendered_table_rows(model_chapter)
+    rows = _rendered_table_rows(artifact_guide)
     for name, label in (
         ("constant", "Constant"),
         ("elo", "Elo"),
@@ -137,16 +139,12 @@ def test_documented_selection_and_bundle_match_committed_records():
             for metric in ("accuracy", "log_loss", "brier_score", "roc_auc")
         ]
         assert expected in rows
-        assert [
-            label,
-            f"{metadata['candidates'][name]['metrics']['log_loss']:.4f}",
-        ] in _rendered_table_rows(artifact_guide)
 
     selection = metadata["selection"]
     assert selection["selected_model_kind"] == "elo_baseline"
     assert selection["reason_code"] == "elo_preferred_challenger_margin_not_met"
-    assert selection["selected_model_kind"] in model_chapter
-    assert selection["reason_code"] in model_chapter
+    assert selection["selected_model_kind"] in artifact_guide
+    assert selection["reason_code"] in artifact_guide
 
     assert _sha256(model_path) == metadata["model"]["sha256"]
     assert _sha256(model_path) == promotion["model_sha256"]
@@ -214,7 +212,7 @@ def test_documented_commands_and_docker_claims_match_implementation():
     documentation_paths = [
         PROJECT_ROOT / "README.md",
         PROJECT_ROOT / "docs" / "getting-started.md",
-        PROJECT_ROOT / "docs" / "tutorial-shortcuts-vs-production.md",
+        PROJECT_ROOT / "docs" / "reference" / "historical-forecast.md",
         PROJECT_ROOT / "docs" / "uv" / "uv-workflows-for-mlops.md",
         PROJECT_ROOT / "docs" / "cicd" / "github-actions-pipeline.md",
         PROJECT_ROOT / "docs" / "deployment" / "docker-and-github-actions.md",
@@ -345,6 +343,29 @@ def _rendered_table_rows(source):
         ]
         for row in re.findall(r"<tr>(.*?)</tr>", rendered, re.DOTALL)
     ]
+
+
+def test_historical_reference_matches_the_fixture_and_service():
+    source = (PROJECT_ROOT / "docs/reference/historical-forecast.md").read_text(
+        encoding="utf-8"
+    )
+    expected = {**worked_fixture(), "surface": F01_SURFACE}
+    example = _first_json_example(source)
+    assert example == {key: expected[key] for key in ForecastRequest.model_fields}
+    ForecastRequest.model_validate(example)
+    documented = {
+        (row[0], row[1])
+        for row in _rendered_table_rows(source)
+        if row[1].startswith("/")
+    }
+    app = create_historical_app()
+    routes = {
+        (method.upper(), path)
+        for path, operations in app.openapi()["paths"].items()
+        for method in operations
+    }
+    # The Prometheus scrape is deliberately excluded from OpenAPI.
+    assert documented == routes | {("GET", "/metrics")}
 
 
 def test_rendered_api_table_contains_the_complete_route_surface():

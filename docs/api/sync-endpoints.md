@@ -1,14 +1,11 @@
----
-title: API Endpoints
-description: Exact FastAPI routes, authentication, prediction schema, canonical response, and error behavior.
----
+# Authenticated packaged API
 
-# API Endpoints
+This app serves the Fognini–Jarry example. For `POST /forecast`, use the [historical request and response schema](../reference/historical-forecast.md#requests-and-responses).
 
 ## Start And Authenticate
 
 ```bash
-cp .env.example .env
+[ -f .env ] || cp .env.example .env
 just serve
 ```
 
@@ -20,6 +17,8 @@ The API listens on `http://127.0.0.1:8000`. The demo credentials default to
 just token-json
 just users-me
 ```
+
+The demo has one active user. The loopback development configuration opts into the example signing key. Production requires an explicit signing key and demo password. Omit the bearer token from a prediction to observe 401. With a valid token, a misspelled player name returns 422 with `detail.code` set to `unknown_players`. Inspect the snapshot spelling before retrying.
 
 ## Route Surface
 

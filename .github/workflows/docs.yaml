@@ -68,6 +68,7 @@ jobs:
           grep -Fq 'href="/privacy/"' site/404.html
           test -s site/search.json
           cmp docs/assets/notebooks/*.ipynb site/assets/notebooks/*.ipynb
+          cmp docs/_redirects site/_redirects
           if [[ -f docs/ads.txt ]]; then
             cmp docs/ads.txt site/ads.txt
             grep -Fq 'name="google-adsense-account"' site/index.html

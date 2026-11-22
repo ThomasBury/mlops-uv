@@ -4,50 +4,33 @@ site_url = "https://mlops-uv-tutorial.bury-thomas.workers.dev/"
 copyright = '<a href="/privacy/">Privacy</a>'
 extra_css = ["stylesheets/brand.css"]
 nav = [
-  {"Start Here" = "index.md"},
-  {"Tutorial" = [
+  {"Course overview" = "index.md"},
+  {"Lessons" = [
     "tutorial/index.md",
-    {"Define the forecasting problem" = "tutorial/forecast-contract.md"},
-    {"Reproduce a fixture" = "tutorial/reproduce-the-fixture.md"},
-    {"Rebuild match history at a cutoff" = "tutorial/rebuild-match-history.md"},
-    {"Decide whether a forecast improves on Elo" = "tutorial/evaluate-a-forecast.md"},
-    {"Serve the frozen forecast" = "tutorial/serve-the-frozen-forecast.md"},
-    {"Diagnose and roll back a forecast" = "tutorial/diagnose-and-roll-back-a-forecast.md"},
-    {"Automate and audit a forecast" = "tutorial/automate-and-audit-a-forecast.md"},
-    {"1. Recreate the working environment" = "tutorial/00-recreate-the-working-environment.md"},
-    {"2. Establish what a prediction needs" = "tutorial/01-notebook-to-data-contract.md"},
-    {"3. Make a training decision reproducible" = "tutorial/02-feature-contract-training-and-export.md"},
-    {"4. Choose the bundle the service may load" = "tutorial/03-reproducibility-versioning-and-dependencies.md"},
-    {"5. Serve one prediction" = "tutorial/04-serving-async-and-monitoring.md"},
-    {"6. Explain a rejected request" = "tutorial/05-authentication-authorization-and-access-boundaries.md"},
-    {"7. Investigate a running service" = "tutorial/06-observability-logging-metrics-and-traces.md"},
-    {"8. Hand the application to another Python user" = "tutorial/08-hand-the-application-to-another-python-user.md"},
-    {"9. Reproduce the service runtime" = "tutorial/09-reproduce-the-service-runtime.md"},
-    {"10. Decide what to verify before release" = "tutorial/07-validation-ci-deployment-and-boundaries.md"}
+    {"1. Define a pre-match probability" = "tutorial/forecast-contract.md"},
+    {"2. Put the forecast in a Python package" = "tutorial/reproduce-the-fixture.md"},
+    {"3. Rebuild the match dataset" = "tutorial/rebuild-match-history.md"},
+    {"4. Build features from what was known" = "tutorial/build-point-in-time-features.md"},
+    {"5. Train under deployment conditions" = "tutorial/train-under-deployment-conditions.md"},
+    {"6. Freeze a candidate and judge the evidence" = "tutorial/evaluate-a-forecast.md"},
+    {"7. Serve the frozen forecast" = "tutorial/serve-the-frozen-forecast.md"},
+    {"8. Reproduce the service on another machine" = "tutorial/reproduce-the-forecast-runtime.md"},
+    {"9. Investigate a forecast after serving" = "tutorial/diagnose-and-roll-back-a-forecast.md"},
+    {"10. Decide what a scheduled run may change" = "tutorial/automate-and-audit-a-forecast.md"}
   ]},
-  {"Companion Guides" = [
-    "guides/index.md",
-    {"Setup" = [
-      {"Getting Started" = "getting-started.md"}
-    ]},
-    {"Deep Dive" = [
-      {"Training and Inference" = "user-guide/training-and-inference.md"},
-      {"Model Artifacts and Promotion" = "user-guide/model-artifacts-and-promotion.md"}
-    ]},
-    {"Tooling" = [
-      {"Developer Workflow" = "uv/uv-workflows-for-mlops.md"}
-    ]},
-    {"Scope and Conventions" = [
-      {"Tutorial Boundaries" = "tutorial-shortcuts-vs-production.md"},
-      {"Docstring Standards" = "docstring-standards.md"},
-      {"Privacy" = "privacy.md"}
-    ]}
-  ]},
-  {"Reference" = [
+  {"Commands and interfaces" = [
     "reference/index.md",
-    {"API Endpoints" = "api/sync-endpoints.md"},
-    {"CI/CD" = "cicd/github-actions-pipeline.md"},
-    {"Deployment" = "deployment/docker-and-github-actions.md"}
+    {"Historical replay" = "reference/historical-forecast.md"},
+    {"Packaged quickstart" = "getting-started.md"},
+    {"Authenticated API" = "api/sync-endpoints.md"},
+    {"Packaged model and data" = "user-guide/model-artifacts-and-promotion.md"},
+    {"Contributor commands" = "uv/uv-workflows-for-mlops.md"},
+    {"Continuous integration" = "cicd/github-actions-pipeline.md"},
+    {"Container targets" = "deployment/docker-and-github-actions.md"},
+    {"Privacy" = "privacy.md"}
+  ]},
+  {"Optional labs" = [
+    {"Measure a blocked event loop" = "labs/event-loop.md"}
   ]}
 ]
 
