@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+from contextlib import nullcontext
 from datetime import date, timedelta
 from hashlib import sha256
 from importlib.metadata import version
@@ -20,7 +21,7 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import log_loss
-from sklearn.model_selection import RandomizedSearchCV, train_test_split
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -50,8 +51,6 @@ FEATURES = ["elo_gap", "surface"]
 SEED = 42
 C_BOUNDS = (0.001, 10.0)
 SEARCH_TRIALS = 12
-RANDOMIZED_SEARCH_TRIALS = 5
-C_VALUES = [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0]
 STARTUP_TRIALS = 5
 BOOTSTRAP_DRAWS = 2000
 REPLAY_ATOL = 1e-8
@@ -350,23 +349,47 @@ def _study_record(
 
 
 def _optimize(
-    frame: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
+    frame: pd.DataFrame,
+    folds: list[tuple[np.ndarray, np.ndarray]],
+    *,
+    experiment_id: str | None = None,
 ) -> tuple[dict, list[dict]]:
     import optuna
 
+    if experiment_id is not None:
+        import mlflow
+    else:
+        mlflow = None
+
     def objective(trial: Trial) -> float:
-        c = trial.suggest_float("C", *C_BOUNDS, log=True)
-        fold_losses = {}
-        for number, (train_idx, valid_idx) in enumerate(folds, 1):
-            train, valid = frame.iloc[train_idx], frame.iloc[valid_idx]
-            model = logistic_pipeline(c).fit(train[FEATURES], train["label"])
-            probability = model.predict_proba(valid[FEATURES])[:, 1]
-            fold_losses[f"fold_{number}_log_loss"] = log_loss(
-                valid["label"], probability, labels=[0, 1]
+        tracking = (
+            mlflow.start_run(
+                experiment_id=experiment_id,
+                nested=True,
+                run_name=f"trial-{trial.number:02d}",
             )
-        score = fmean(fold_losses.values())
-        trial.set_user_attr("fold_losses", fold_losses)
-        return score
+            if mlflow is not None
+            else nullcontext()
+        )
+        with tracking as run:
+            c = trial.suggest_float("C", *C_BOUNDS, log=True)
+            if mlflow is not None and run is not None:
+                mlflow.log_params({"trial_number": trial.number, "C": c})
+                trial.set_user_attr("run_id", run.info.run_id)
+
+            fold_losses = {}
+            for number, (train_idx, valid_idx) in enumerate(folds, 1):
+                train, valid = frame.iloc[train_idx], frame.iloc[valid_idx]
+                model = logistic_pipeline(c).fit(train[FEATURES], train["label"])
+                probability = model.predict_proba(valid[FEATURES])[:, 1]
+                fold_losses[f"fold_{number}_log_loss"] = log_loss(
+                    valid["label"], probability, labels=[0, 1]
+                )
+            score = fmean(fold_losses.values())
+            trial.set_user_attr("fold_losses", fold_losses)
+            if mlflow is not None:
+                mlflow.log_metrics({**fold_losses, "mean_log_loss": score})
+            return score
 
     study = optuna.create_study(
         direction="minimize",
@@ -389,6 +412,8 @@ def _optimize(
         "best_params": {"model__C": winner.params["C"]},
         "best_mean_log_loss": winner.value,
     }
+    if experiment_id is not None:
+        decision["best_trial_run_id"] = winner.user_attrs["run_id"]
     return decision, trials
 
 
@@ -409,73 +434,74 @@ def tune_development(results: Sequence[MatchResult]) -> dict:
 def train_candidate(results: Sequence[MatchResult], output: Path) -> dict:
     """Freeze the temporal search decision and fitted preprocessing before scoring."""
     import mlflow
+    import mlflow.sklearn
+    from mlflow.models import infer_signature
 
     if output.exists():
         raise FileExistsError(output)
     development = development_results(results)
     frame = replay_frame(development, leak=True)
     folds = development_folds(frame)
-    search = RandomizedSearchCV(
-        logistic_pipeline(),
-        {"model__C": C_VALUES},
-        n_iter=RANDOMIZED_SEARCH_TRIALS,
-        scoring="neg_log_loss",
-        cv=folds,
-        random_state=SEED,
-        refit=False,
-        error_score="raise",
-    ).fit(frame[FEATURES], frame["label"])
-    model = (
-        logistic_pipeline()
-        .set_params(**search.best_params_)
-        .fit(frame[FEATURES], frame["label"])
-    )
+    fold_membership = _fold_membership(frame, folds)
+    fold_csv = pd.concat(fold_membership).to_csv(index=False)
+    study_record = _study_record(results, development, fold_csv)
     comparison, random_membership = _comparison(frame, folds)
     metrics = comparison["mean_log_loss"]
-    metrics["logistic_tuned"] = -float(search.best_score_)
     refit_membership = frame[MEMBERSHIP].assign(split="final_refit", partition="train")
 
     output.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=output.parent) as temporary:
         bundle = Path(temporary) / output.name
         bundle.mkdir()
-        joblib.dump(model, bundle / "model.joblib")
-        pd.concat(
-            [refit_membership, *_fold_membership(frame, folds), random_membership]
-        ).to_csv(bundle / "membership.csv", index=False)
-        trials = pd.DataFrame(search.cv_results_).filter(
-            regex=r"^(params$|split\d+_test_score$|mean_test_score$|rank_test_score$)"
-        )
-        trials.to_csv(bundle / "search.csv", index=False)
         with mlflow.start_run(
             experiment_id=_tracking_experiment(output.parent), run_name="selection"
         ) as run:
+            mlflow.log_dict(study_record, "study.json")
+            mlflow.log_params(
+                {
+                    "data_sha256": study_record["data_sha256"],
+                    "fold_membership_sha256": study_record["fold_membership_sha256"],
+                    "seed": SEED,
+                    "search_direction": study_record["config"]["search_direction"],
+                    "search_trials": SEARCH_TRIALS,
+                }
+            )
+            decision, trials = _optimize(
+                frame, folds, experiment_id=run.info.experiment_id
+            )
+            metrics["logistic_tuned"] = decision["best_mean_log_loss"]
+            model = logistic_pipeline(decision["best_params"]["model__C"]).fit(
+                frame[FEATURES], frame["label"]
+            )
+            joblib.dump(model, bundle / "model.joblib")
+            pd.concat([refit_membership, *fold_membership, random_membership]).to_csv(
+                bundle / "membership.csv", index=False
+            )
+            pd.DataFrame(trials).to_csv(bundle / "search.csv", index=False)
+
+            example = frame[FEATURES].head(2)
+            model_info = mlflow.sklearn.log_model(
+                model,
+                name="historical-logistic",
+                signature=infer_signature(example, model.predict_proba(example)),
+                pyfunc_predict_fn="predict_proba",
+                serialization_format="skops",
+                # scikit-learn 1.6 stores this class in the fitted ColumnTransformer.
+                skops_trusted_types=[
+                    "sklearn.compose._column_transformer._RemainderColsList"
+                ],
+                pip_requirements=[
+                    f"{name}=={version(name)}"
+                    for name in ("scikit-learn", "numpy", "pandas", "skops")
+                ],
+                params=decision["best_params"],
+                tags={"best_trial_run_id": decision["best_trial_run_id"]},
+            )
             record = {
                 "run_id": run.info.run_id,
-                "source_sha256": SNAPSHOT_SHA256,
-                "data_sha256": content_sha256(results),
-                "development_sha256": content_sha256(development),
-                **_runtime_identity(),
-                "config": {
-                    "validation_starts": [day.isoformat() for day in VALIDATION_STARTS],
-                    "final_start": DEVELOPMENT_END.isoformat(),
-                    "selection_label_cutoff": prior_day_cutoff(
-                        DEVELOPMENT_END
-                    ).isoformat(),
-                    "features": FEATURES,
-                    "initial_elo": INITIAL_ELO,
-                    "elo_k": K,
-                    "c_values": C_VALUES,
-                    "search_trials": RANDOMIZED_SEARCH_TRIALS,
-                    "seed": SEED,
-                    "bootstrap_draws": BOOTSTRAP_DRAWS,
-                    "bootstrap_block": "nonempty UTC calendar week starting Monday",
-                    "calibration_bin_edges": CALIBRATION_BINS,
-                    "replay_atol": REPLAY_ATOL,
-                    "replay_rtol": 0.0,
-                    "selection_rule": "Lowest mean temporal fold log loss among sampled logistic settings, first sampled on an exact tie.",
-                },
-                "best_params": search.best_params_,
+                **study_record,
+                **decision,
+                "logged_model_uri": model_info.model_uri,
                 "fitted_model_params": model.named_steps["model"].get_params(),
                 "refit_prevalence": _prevalence(frame),
                 **comparison,
@@ -487,12 +513,12 @@ def train_candidate(results: Sequence[MatchResult], output: Path) -> dict:
             _write_json(bundle / "selection.json", record)
             mlflow.log_params(
                 {
-                    **record["best_params"],
-                    "seed": SEED,
-                    "data_sha256": record["data_sha256"],
+                    **decision["best_params"],
+                    "best_trial_number": record["best_trial_number"],
                     "model_sha256": record["artifacts_sha256"]["model.joblib"],
                 }
             )
+            mlflow.set_tag("best_trial_run_id", record["best_trial_run_id"])
             mlflow.log_metrics(
                 {f"dev_{name}_log_loss": value for name, value in metrics.items()}
             )
