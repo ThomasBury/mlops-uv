@@ -1,6 +1,6 @@
 # 10. Decide what a scheduled run may change
 
-A candidate build finished and its mean loss is slightly lower than Elo’s. Before giving a schedule permission to change anything, make the decision yourself. Which end of the paired interval must be below zero? What exactly would you have to restore if this service began returning different forecasts?
+A candidate build finished and its mean loss is slightly higher than Elo’s. Before giving a schedule permission to change anything, make the decision yourself. Which end of the paired interval must be below zero? What exactly would you have to restore if this service began returning different forecasts?
 
 ## Apply the release rule
 
@@ -11,7 +11,7 @@ The rule declared before final evaluation requires the upper end of the weekly 9
   --candidate logistic_tuned --incumbent elo
 ```
 
-Expect exit status 1. The upper endpoint is about +0.00057. A positive value allows the candidate to be worse. Keep the recorded model available for replay. Reusing these same final fixtures to choose another setting would turn them into selection data.
+Expect exit status 1. The upper endpoint is about +0.00547. The whole interval favors Elo. Keep the recorded model available for replay. Reusing these same final fixtures to choose another setting would turn them into selection data.
 
 ## Restore the model and its history
 
@@ -46,7 +46,7 @@ Expect exit status 1. A rejection leaves the run directory without a promotion r
 test ! -e "$run/bundle/promotion.json"
 ```
 
-A passing explicit promotion writes a dated approval. Starting a worker with a particular model and history is a separate operator action. The historical GitHub Actions workflow runs the tests and candidate recipe on pull requests, pushes to main, manual dispatch and a Monday schedule. It uploads the evidence with read-only repository permissions. Replaying the pinned snapshot can detect a reproducibility regression. A new model-value decision needs fresh, mature evidence. [CI workflow reference](../cicd/github-actions-pipeline.md)
+A passing explicit promotion writes a dated approval. Starting a worker with a particular model and history is a separate operator action. The historical GitHub Actions workflow runs the registry test and candidate recipe on pull requests, pushes to main, manual dispatch and a Monday schedule. The standalone forecast tests also run in this workflow on scheduled and manual runs. It uploads the evidence with read-only repository permissions. Replaying the pinned snapshot can detect a reproducibility regression. A new model-value decision needs fresh, mature evidence. [CI workflow reference](../cicd/github-actions-pipeline.md)
 
 ## Diagnose an unfamiliar forecast
 

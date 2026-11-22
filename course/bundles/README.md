@@ -11,6 +11,6 @@ To rebuild the teaching assets from the repository root, use a new output direct
 
 ```bash
 output="$(mktemp -d)/bundles"
-uv run --locked --python 3.12 --group mlops --extra tracing python \\
+uv run --locked --python 3.12 --group mlops --extra tracing python \
     course/build_prerequisites.py "$output"
 ```

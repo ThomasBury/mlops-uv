@@ -36,7 +36,7 @@ From the checkout, use the locked Python 3.12 environment with the `mlops` group
 | `acebet.dataprep.historical_results CSV RESULTS` | Writes validated Parquet. Standard output gives source hash, logical content hash and row count. |
 | `acebet.dataprep.historical_replay [RESULTS]` | Without a path, prints F01’s feature trace. With Parquet, compares as-of and leaky Elo. |
 | `acebet.train.historical_evaluation compare RESULTS` | Development scores by fold and a random-split timing diagnostic. |
-| `acebet.train.historical_evaluation train RESULTS BUNDLE` | Creates a new directory. `selection.json` links input and source hashes, dependency versions, feature policy, seed, settings and model hash. `membership.csv` records split roles and availability. `search.csv` records the five trials. `model.joblib` is the fitted pipeline. |
+| `acebet.train.historical_evaluation train RESULTS BUNDLE` | Creates a new directory. `selection.json` links input and source hashes, dependency versions, feature policy, seed, settings and model hash. `membership.csv` records split roles and availability. `search.csv` records the 12 Optuna trials. `model.joblib` is the fitted pipeline. |
 | `acebet.train.historical_evaluation evaluate RESULTS BUNDLE` | Writes `final/forecasts.csv` with one row per match and `final/evaluation.json` with counts, metrics, intervals and run IDs. |
 | `acebet.historical_forecast RESULTS BUNDLE` | Reads one request as JSON from stdin, writes one reply to stdout. |
 | `acebet.historical_monitoring quality LOG RESULTS AS_OF` | Scores recorded forecasts against results available by the reporting clock. |

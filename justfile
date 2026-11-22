@@ -86,7 +86,8 @@ forecast-candidate $forecast_run:
     just forecast-train "$forecast_run/matches.parquet" "$forecast_run/bundle" > /dev/null
     just forecast-evaluate "$forecast_run/matches.parquet" "$forecast_run/bundle" > /dev/null
     {{forecast_uv}} python -m acebet.historical_monitoring review \
-        "$forecast_run/matches.parquet" "$forecast_run/bundle" > "$forecast_run/validation.json"
+        "$forecast_run/matches.parquet" "$forecast_run/bundle" > "$forecast_run/.validation.json.tmp"
+    mv -- "$forecast_run/.validation.json.tmp" "$forecast_run/validation.json"
     cat -- "$forecast_run/validation.json"
 # Explicitly approves a reviewed candidate if it passes the Elo gate.
 forecast-promote $forecast_run:

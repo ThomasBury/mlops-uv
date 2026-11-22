@@ -4,7 +4,9 @@ Build a tennis forecast you can reproduce from its match history, then follow th
 
 ## Choose a checkpoint
 
-The latest course checkpoint, `course-v1-m10`, includes this index and all the lesson materials. In a separate clone, open the tag for the lesson you want. For example, from a repository that already has the tags:
+The maintainers publish the `course-v1-*` tags after the course lands on the default branch. The final checkpoint, `course-v1-m10`, includes this index and all the lesson materials. Until the tags are published, you can start [M5](m5.md) or [M9a](m9a.md) directly from a checkout that contains this course and its archives.
+
+Once the tags are available, open the checkpoint for your lesson in a separate clone. Run these commands from a repository that has the tags to open M5.
 
 ```bash
 practice="$(mktemp -d)"

@@ -28,7 +28,7 @@ if request.p1_id != players[0]:
     gap, probability = -gap, 1.0 - probability
 ```
 
-For F01 the gap is −16, the Elo probability is 0.4770, and the fitted logistic prediction is 0.469100. Find `424816` in the final CSV and compare its `logistic_tuned` value with the offline forecast (about 0.527281).
+For F01 the gap is −16, the Elo probability is 0.4770, and the fitted logistic prediction is 0.475945. Find `424816` in the final CSV and compare its `logistic_tuned` value with the offline forecast (about 0.524194).
 
 ## Follow the same request through HTTP
 
