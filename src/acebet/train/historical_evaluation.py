@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 from datetime import date, timedelta
+from hashlib import sha256
 from importlib.metadata import version
 import json
 from pathlib import Path
 from platform import python_version
+from statistics import fmean
 from tempfile import TemporaryDirectory
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import joblib
 import numpy as np
@@ -40,11 +42,17 @@ from acebet.dataprep.historical_results import (
 )
 from acebet.model_artifacts import read_json, sha256_file
 
+if TYPE_CHECKING:
+    from optuna.trial import Trial
+
 VALIDATION_STARTS = (date(2021, 3, 1), date(2021, 5, 1), date(2021, 7, 1))
 FEATURES = ["elo_gap", "surface"]
 SEED = 42
+C_BOUNDS = (0.001, 10.0)
+SEARCH_TRIALS = 12
+RANDOMIZED_SEARCH_TRIALS = 5
 C_VALUES = [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0]
-SEARCH_TRIALS = 5
+STARTUP_TRIALS = 5
 BOOTSTRAP_DRAWS = 2000
 REPLAY_ATOL = 1e-8
 CALIBRATION_BINS = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
@@ -121,7 +129,7 @@ def _fold_membership(
     ]
 
 
-def logistic_pipeline() -> Pipeline:
+def logistic_pipeline(c: float = 1.0) -> Pipeline:
     return Pipeline(
         [
             (
@@ -137,7 +145,7 @@ def logistic_pipeline() -> Pipeline:
                     ]
                 ),
             ),
-            ("model", LogisticRegression(random_state=SEED)),
+            ("model", LogisticRegression(C=c, random_state=SEED)),
         ]
     )
 
@@ -242,10 +250,12 @@ def _runtime_identity() -> dict:
                     "joblib",
                     "mlflow",
                     "numpy",
+                    "optuna",
                     "pandas",
                     "pyarrow",
                     "scikit-learn",
                     "scipy",
+                    "skops",
                     "threadpoolctl",
                 )
             },
@@ -305,6 +315,97 @@ def _tracking_experiment(parent: Path):
     )
 
 
+def _study_record(
+    results: Sequence[MatchResult], development: Sequence[MatchResult], fold_csv: str
+) -> dict:
+    return {
+        "source_sha256": SNAPSHOT_SHA256,
+        "data_sha256": content_sha256(results),
+        "development_sha256": content_sha256(development),
+        "fold_membership_sha256": sha256(fold_csv.encode("utf-8")).hexdigest(),
+        **_runtime_identity(),
+        "config": {
+            "validation_starts": [day.isoformat() for day in VALIDATION_STARTS],
+            "final_start": DEVELOPMENT_END.isoformat(),
+            "selection_label_cutoff": prior_day_cutoff(DEVELOPMENT_END).isoformat(),
+            "features": FEATURES,
+            "initial_elo": INITIAL_ELO,
+            "elo_k": K,
+            "search_direction": "minimize",
+            "search_sampler": "TPESampler",
+            "search_startup_trials": STARTUP_TRIALS,
+            "search_trials": SEARCH_TRIALS,
+            "search_jobs": 1,
+            "c_bounds": list(C_BOUNDS),
+            "c_log_scale": True,
+            "seed": SEED,
+            "bootstrap_draws": BOOTSTRAP_DRAWS,
+            "bootstrap_block": "nonempty UTC calendar week starting Monday",
+            "calibration_bin_edges": CALIBRATION_BINS,
+            "replay_atol": REPLAY_ATOL,
+            "replay_rtol": 0.0,
+            "selection_rule": "Lowest mean temporal fold log loss; earliest trial on an exact tie.",
+        },
+    }
+
+
+def _optimize(
+    frame: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
+) -> tuple[dict, list[dict]]:
+    import optuna
+
+    def objective(trial: Trial) -> float:
+        c = trial.suggest_float("C", *C_BOUNDS, log=True)
+        fold_losses = {}
+        for number, (train_idx, valid_idx) in enumerate(folds, 1):
+            train, valid = frame.iloc[train_idx], frame.iloc[valid_idx]
+            model = logistic_pipeline(c).fit(train[FEATURES], train["label"])
+            probability = model.predict_proba(valid[FEATURES])[:, 1]
+            fold_losses[f"fold_{number}_log_loss"] = log_loss(
+                valid["label"], probability, labels=[0, 1]
+            )
+        score = fmean(fold_losses.values())
+        trial.set_user_attr("fold_losses", fold_losses)
+        return score
+
+    study = optuna.create_study(
+        direction="minimize",
+        sampler=optuna.samplers.TPESampler(seed=SEED, n_startup_trials=STARTUP_TRIALS),
+    )
+    study.optimize(objective, n_trials=SEARCH_TRIALS, n_jobs=1)
+    winner = study.best_trial
+    trials = [
+        {
+            "trial_number": trial.number,
+            "C": trial.params["C"],
+            **trial.user_attrs["fold_losses"],
+            "mean_log_loss": trial.value,
+            "status": trial.state.name,
+        }
+        for trial in study.trials
+    ]
+    decision = {
+        "best_trial_number": winner.number,
+        "best_params": {"model__C": winner.params["C"]},
+        "best_mean_log_loss": winner.value,
+    }
+    return decision, trials
+
+
+def tune_development(results: Sequence[MatchResult]) -> dict:
+    """Search the fixed development folds without refitting or opening a tracking run."""
+    development = development_results(results)
+    frame = replay_frame(development)
+    folds = development_folds(frame)
+    fold_csv = pd.concat(_fold_membership(frame, folds)).to_csv(index=False)
+    decision, trials = _optimize(frame, folds)
+    return {
+        **_study_record(results, development, fold_csv),
+        **decision,
+        "trials": trials,
+    }
+
+
 def train_candidate(results: Sequence[MatchResult], output: Path) -> dict:
     """Freeze the temporal search decision and fitted preprocessing before scoring."""
     import mlflow
@@ -317,7 +418,7 @@ def train_candidate(results: Sequence[MatchResult], output: Path) -> dict:
     search = RandomizedSearchCV(
         logistic_pipeline(),
         {"model__C": C_VALUES},
-        n_iter=SEARCH_TRIALS,
+        n_iter=RANDOMIZED_SEARCH_TRIALS,
         scoring="neg_log_loss",
         cv=folds,
         random_state=SEED,
@@ -365,7 +466,7 @@ def train_candidate(results: Sequence[MatchResult], output: Path) -> dict:
                     "initial_elo": INITIAL_ELO,
                     "elo_k": K,
                     "c_values": C_VALUES,
-                    "search_trials": SEARCH_TRIALS,
+                    "search_trials": RANDOMIZED_SEARCH_TRIALS,
                     "seed": SEED,
                     "bootstrap_draws": BOOTSTRAP_DRAWS,
                     "bootstrap_block": "nonempty UTC calendar week starting Monday",
@@ -517,7 +618,7 @@ def evaluate_candidate(results: Sequence[MatchResult], bundle: Path) -> dict:
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("compare", "train", "evaluate"):
+    for name in ("compare", "tune", "train", "evaluate"):
         subparser = commands.add_parser(name)
         subparser.add_argument("results", type=Path)
         if name == "compare":
@@ -526,12 +627,14 @@ def main(argv: Sequence[str] | None = None) -> None:
                 type=Path,
                 help="Save comparison and fold membership in a new directory.",
             )
-        else:
+        elif name != "tune":
             subparser.add_argument("bundle", type=Path)
     args = parser.parse_args(argv)
     results = read_results(args.results)
     if args.command == "compare":
         report = compare_development(results, args.output)
+    elif args.command == "tune":
+        report = tune_development(results)
     elif args.command == "train":
         report = train_candidate(results, args.bundle)
     else:
