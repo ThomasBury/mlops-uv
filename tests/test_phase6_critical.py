@@ -25,6 +25,7 @@ from acebet.app.dependencies.predict_winner import (
 )
 from acebet import model_artifacts
 from acebet.model_artifacts import (
+    ValidatedModelArtifact,
     candidates_with_selection_details,
     compute_selection,
     ensure_artifact_bundle,
@@ -361,31 +362,26 @@ def test_load_player_stats_rejects_out_of_bounds_elo(monkeypatch, bad_elo):
 
 def test_model_bundle_type_validation(monkeypatch, tmp_path):
     path = tmp_path / "model.joblib"
-    monkeypatch.setattr(predict_winner, "resolve_model_artifact_path", lambda _: path)
+    metadata = {
+        "model": {"kind": "elo_baseline", "filename": path.name, "sha256": "0" * 64}
+    }
     monkeypatch.setattr(
         predict_winner,
-        "read_json",
-        lambda _: {
-            "model": {"kind": "elo_baseline", "filename": path.name, "sha256": "0" * 64}
-        },
+        "read_validated_model_artifact",
+        lambda _: ValidatedModelArtifact(path, metadata, b"", ""),
     )
     monkeypatch.setattr(predict_winner, "load", lambda _: object())
     with pytest.raises(ValueError, match="elo_baseline"):
         load_model_bundle(path)
 
-    monkeypatch.setattr(
-        predict_winner,
-        "read_json",
-        lambda _: {
-            "model": {"kind": "unsupported", "filename": path.name, "sha256": "0" * 64}
-        },
-    )
+    metadata["model"]["kind"] = "unsupported"
     with pytest.raises(ValueError, match="Unsupported"):
         load_model_bundle(path)
 
 
-def test_successful_metadata_validation_without_artifact_path():
-    selection = validate_model_metadata(canonical_metadata())
+@pytest.mark.parametrize("model_path", [None, PACKAGE_DATA / MODEL_NAME])
+def test_successful_metadata_validation(model_path):
+    selection = validate_model_metadata(canonical_metadata(), model_path=model_path)
     assert selection["status"] == "selected"
 
 
@@ -433,8 +429,11 @@ def test_lightgbm_bundle_requires_pipeline_and_classifier(monkeypatch, tmp_path)
             "sha256": "0" * 64,
         }
     }
-    monkeypatch.setattr(predict_winner, "resolve_model_artifact_path", lambda _: path)
-    monkeypatch.setattr(predict_winner, "read_json", lambda _: metadata)
+    monkeypatch.setattr(
+        predict_winner,
+        "read_validated_model_artifact",
+        lambda _: ValidatedModelArtifact(path, metadata, b"", ""),
+    )
     monkeypatch.setattr(predict_winner, "load", lambda _: object())
     with pytest.raises(ValueError, match="metadata kind 'lightgbm'"):
         load_model_bundle(path)
@@ -468,8 +467,11 @@ def test_valid_lightgbm_bundle_reaches_feature_contract_validation(
     )
     model = FeatureContractPipeline(steps=[("gbm", classifier)])
     compatible = Mock()
-    monkeypatch.setattr(predict_winner, "resolve_model_artifact_path", lambda _: path)
-    monkeypatch.setattr(predict_winner, "read_json", lambda _: metadata)
+    monkeypatch.setattr(
+        predict_winner,
+        "read_validated_model_artifact",
+        lambda _: ValidatedModelArtifact(path, metadata, b"", ""),
+    )
     monkeypatch.setattr(predict_winner, "load", lambda _: model)
     monkeypatch.setattr(predict_winner, "assert_model_artifact_compatible", compatible)
 

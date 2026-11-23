@@ -42,7 +42,7 @@ from acebet.features import (
     align_features_to_model,
     build_match_feature_row,
 )
-from acebet.model_artifacts import promotion_record_path, resolve_model_artifact_path
+from acebet.model_artifacts import promotion_record_path
 from acebet.settings import AppSettings, get_jwt_signing_key, get_settings
 
 PACKAGE_DATA_DIR = Path(__file__).resolve().parents[1] / "data"
@@ -107,8 +107,8 @@ def load_prediction_assets(
     settings: AppSettings,
 ) -> PredictionAssets:
     """Load one complete set of estimator, player state, and model identity."""
-    stats_file, model_path = resolve_prediction_assets(prediction_mode, settings)
-    cache_key = resolve_model_artifact_path(model_path).resolve()
+    stats_file, model_dir = resolve_prediction_assets(prediction_mode, settings)
+    cache_key = model_dir.resolve()
     bundle = model_cache.get(cache_key)
     if bundle is None:
         bundle = load_model_bundle(cache_key)

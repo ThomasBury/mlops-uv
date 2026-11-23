@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 import hashlib
 import json
 import math
@@ -21,6 +22,16 @@ LEARNED_VS_CONSTANT_LOG_LOSS_MARGIN = 0.005
 LIGHTGBM_VS_ELO_LOG_LOSS_MARGIN = 0.005
 METRIC_NAMES = ("accuracy", "log_loss", "brier_score", "roc_auc")
 MODEL_KINDS = frozenset({"elo_baseline", "lightgbm"})
+
+
+@dataclass(frozen=True)
+class ValidatedModelArtifact:
+    """Metadata and model bytes from the same validated bundle."""
+
+    path: Path
+    metadata: dict[str, Any]
+    model_bytes: bytes
+    metadata_sha256: str
 
 
 def model_metadata_path(model_path: str | Path) -> Path:
@@ -76,7 +87,12 @@ def write_atomic(path: str | Path, write: Callable[[IO[str]], object]) -> Path:
 
 def read_json(path: str | Path) -> dict[str, Any]:
     """Read a JSON object from disk."""
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    path = Path(path)
+    return _decode_json_object(path.read_text(encoding="utf-8"), path)
+
+
+def _decode_json_object(text: str, path: Path) -> dict[str, Any]:
+    payload = json.loads(text)
     if not isinstance(payload, dict):
         raise ValueError(f"Expected a JSON object in '{path}'.")
     return payload
@@ -385,13 +401,17 @@ def validate_model_metadata(
         raise ValueError("Model sha256 must be a lowercase SHA-256 digest.")
     if model_path is not None:
         path = Path(model_path)
-        if model.get("filename") != path.name:
-            raise ValueError("Model metadata filename does not match the model file.")
-        if model.get("sha256") != sha256_file(path):
-            raise ValueError(
-                "Model artifact SHA-256 mismatch. The bundle may be incomplete or tampered."
-            )
+        _validate_model_file(model, path, sha256_file(path))
     return recomputed
+
+
+def _validate_model_file(model: Mapping[str, Any], path: Path, digest: str) -> None:
+    if model.get("filename") != path.name:
+        raise ValueError("Model metadata filename does not match the model file.")
+    if model.get("sha256") != digest:
+        raise ValueError(
+            "Model artifact SHA-256 mismatch. The bundle may be incomplete or tampered."
+        )
 
 
 def _is_sha256(value: object) -> bool:
@@ -423,10 +443,33 @@ def ensure_artifact_bundle(model_path: str | Path) -> tuple[Path, Path, Path]:
 
 def validate_artifact_bundle(model_path: str | Path) -> dict[str, Any]:
     """Validate a complete direct-file bundle without deserializing joblib."""
-    model_file, metadata_file, _ = ensure_artifact_bundle(model_path)
-    metadata = read_json(metadata_file)
-    validate_model_metadata(metadata, model_path=model_file)
-    return metadata
+    return _read_artifact_bundle(*ensure_artifact_bundle(model_path)).metadata
+
+
+def _read_artifact_bundle(
+    model_file: Path,
+    metadata_file: Path,
+    card_file: Path,
+    record: Mapping[str, Any] | None = None,
+) -> ValidatedModelArtifact:
+    model_bytes = model_file.read_bytes()
+    model_digest = hashlib.sha256(model_bytes).hexdigest()
+    metadata_bytes = metadata_file.read_bytes()
+    metadata_digest = hashlib.sha256(metadata_bytes).hexdigest()
+    if record is not None:
+        for key, digest in (
+            ("model_sha256", model_digest),
+            ("metadata_sha256", metadata_digest),
+            ("modelcard_sha256", sha256_file(card_file)),
+        ):
+            if record.get(key) != digest:
+                raise ValueError(
+                    f"Promotion record {key} mismatch. The bundle may be incomplete or tampered."
+                )
+    metadata = _decode_json_object(metadata_bytes.decode("utf-8"), metadata_file)
+    validate_model_metadata(metadata)
+    _validate_model_file(metadata["model"], model_file, model_digest)
+    return ValidatedModelArtifact(model_file, metadata, model_bytes, metadata_digest)
 
 
 def list_exported_models(model_dir: str | Path) -> list[Path]:
@@ -447,7 +490,8 @@ def resolve_latest_model_path(model_dir: str | Path) -> Path:
 def build_promotion_record(model_path: str | Path) -> dict[str, Any]:
     """Validate a v2 bundle and build its checksum-bound promotion record."""
     model_file, metadata_file, card_file = ensure_artifact_bundle(model_path)
-    metadata = validate_artifact_bundle(model_file)
+    artifact = _read_artifact_bundle(model_file, metadata_file, card_file)
+    metadata = artifact.metadata
     selection, model = metadata["selection"], metadata["model"]
     return {
         "schema_version": PROMOTION_RECORD_SCHEMA_VERSION,
@@ -458,8 +502,8 @@ def build_promotion_record(model_path: str | Path) -> dict[str, Any]:
         "model_kind": model["kind"],
         "package_name": PACKAGE_NAME,
         "package_version": model["package"]["version"],
-        "model_sha256": sha256_file(model_file),
-        "metadata_sha256": sha256_file(metadata_file),
+        "model_sha256": model["sha256"],
+        "metadata_sha256": artifact.metadata_sha256,
         "modelcard_sha256": sha256_file(card_file),
         "selection_reason": selection["reason_code"],
         "selection_reason_text": selection["reason"],
@@ -468,6 +512,12 @@ def build_promotion_record(model_path: str | Path) -> dict[str, Any]:
 
 def validate_promotion_record(record: Mapping[str, Any], model_dir: str | Path) -> Path:
     """Validate pointer hashes and identities before deserializing joblib."""
+    return _read_promoted_bundle(record, Path(model_dir)).path
+
+
+def _read_promoted_bundle(
+    record: Mapping[str, Any], directory: Path
+) -> ValidatedModelArtifact:
     _require_schema(record, PROMOTION_RECORD_SCHEMA_VERSION, "promotion record")
     names = {
         key: record.get(f"{key}_filename") for key in ("model", "metadata", "modelcard")
@@ -477,7 +527,6 @@ def validate_promotion_record(record: Mapping[str, Any], model_dir: str | Path) 
         for value in names.values()
     ):
         raise ValueError("Promotion record filenames must be simple local filenames.")
-    directory = Path(model_dir)
     model_file, metadata_file, card_file = (
         directory / cast(str, names[key]) for key in ("model", "metadata", "modelcard")
     )
@@ -498,24 +547,13 @@ def validate_promotion_record(record: Mapping[str, Any], model_dir: str | Path) 
         raise ValueError(
             "Promotion record sidecar filenames do not match the model filename."
         )
-    for path, key in (
-        (model_file, "model_sha256"),
-        (metadata_file, "metadata_sha256"),
-        (card_file, "modelcard_sha256"),
-    ):
-        if record.get(key) != sha256_file(path):
-            raise ValueError(
-                f"Promotion record {key} mismatch. The bundle may be incomplete or tampered."
-            )
-    metadata = read_json(metadata_file)
-    selection = validate_model_metadata(metadata, model_path=model_file)
-    model = metadata["model"]
+    artifact = _read_artifact_bundle(model_file, metadata_file, card_file, record)
+    model = artifact.metadata["model"]
     identity = {
         "model_kind": model["kind"],
         "package_name": PACKAGE_NAME,
         "package_version": model["package"]["version"],
-        "model_sha256": model["sha256"],
-        "selection_reason": selection["reason_code"],
+        "selection_reason": artifact.metadata["selection"]["reason_code"],
     }
     mismatched = [key for key, value in identity.items() if record.get(key) != value]
     if mismatched:
@@ -523,20 +561,24 @@ def validate_promotion_record(record: Mapping[str, Any], model_dir: str | Path) 
             "Promotion record identity does not match model metadata: "
             + ", ".join(mismatched)
         )
-    return model_file
+    return artifact
 
 
 def resolve_model_artifact_path(model_path: str | Path) -> Path:
     """Resolve and validate a trusted direct file or required promoted directory."""
+    return read_validated_model_artifact(model_path).path
+
+
+def read_validated_model_artifact(model_path: str | Path) -> ValidatedModelArtifact:
+    """Return checked model bytes and metadata for a direct file or promoted directory."""
     path = Path(model_path)
     if path.is_file():
-        validate_artifact_bundle(path)
         pointer = promotion_record_path(path.parent)
         if pointer.is_file():
             record = read_json(pointer)
             if record.get("model_filename") == path.name:
-                return validate_promotion_record(record, path.parent)
-        return path
+                return _read_promoted_bundle(record, path.parent)
+        return _read_artifact_bundle(*ensure_artifact_bundle(path))
     if not path.is_dir():
         raise FileNotFoundError(f"Model path '{path}' does not exist.")
     pointer = promotion_record_path(path)
@@ -544,4 +586,4 @@ def resolve_model_artifact_path(model_path: str | Path) -> Path:
         raise FileNotFoundError(
             f"Model directory '{path}' is not promoted: missing '{PROMOTION_RECORD_FILENAME}'. Promote a complete v2 bundle first."
         )
-    return validate_promotion_record(read_json(pointer), path)
+    return _read_promoted_bundle(read_json(pointer), path)

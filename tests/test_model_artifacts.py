@@ -116,10 +116,21 @@ np.testing.assert_allclose(model.predict_proba(features)[:, 1], features['proba_
     )
 
 
-def test_loaded_bundle_identity_comes_from_validated_metadata(tmp_path):
+def test_loaded_bundle_uses_the_validated_metadata_and_model_bytes(
+    tmp_path, monkeypatch
+):
     model_path = create_model_bundle(tmp_path)
     promote_model(model_path=model_path)
-    metadata = read_json(model_metadata_path(model_path))
+    metadata_path = model_metadata_path(model_path)
+    metadata = read_json(metadata_path)
+    deserialize = prediction_module.load
+
+    def replace_files_and_deserialize(checked_bytes):
+        model_path.write_bytes(b"replaced after validation")
+        metadata_path.write_text("{}", encoding="utf-8")
+        return deserialize(checked_bytes)
+
+    monkeypatch.setattr(prediction_module, "load", replace_files_and_deserialize)
 
     bundle = load_model_bundle(tmp_path)
 
@@ -184,8 +195,9 @@ def test_tampering_fails_before_joblib_load(tmp_path, monkeypatch, target):
     mocked_load = Mock(side_effect=AssertionError("joblib.load must not run"))
     monkeypatch.setattr(prediction_module, "load", mocked_load)
 
-    with pytest.raises((ValueError, json.JSONDecodeError)):
-        load_model_bundle(tmp_path)
+    for bundle_path in (tmp_path, model_path):
+        with pytest.raises(ValueError):
+            load_model_bundle(bundle_path)
     mocked_load.assert_not_called()
 
 

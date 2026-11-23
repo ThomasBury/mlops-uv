@@ -27,11 +27,7 @@ from acebet.features import (
     assert_model_artifact_compatible,
     build_match_feature_row,
 )
-from acebet.model_artifacts import (
-    model_metadata_path,
-    read_json,
-    resolve_model_artifact_path,
-)
+from acebet.model_artifacts import read_validated_model_artifact
 
 
 @dataclass(frozen=True)
@@ -225,9 +221,9 @@ def normalize_prediction_outputs(
 
 def load_model_bundle(model_path: str | Path) -> LoadedModelBundle:
     """Load an estimator and metadata-derived identity from one validated bundle."""
-    path = resolve_model_artifact_path(model_path)
-    metadata = read_json(model_metadata_path(path))
-    model = load(path)
+    artifact = read_validated_model_artifact(model_path)
+    metadata = artifact.metadata
+    model = load(BytesIO(artifact.model_bytes))
     model_metadata = metadata["model"]
     model_kind = model_metadata["kind"]
     if model_kind == "elo_baseline":
@@ -258,7 +254,7 @@ def load_model_bundle(model_path: str | Path) -> LoadedModelBundle:
     return LoadedModelBundle(
         estimator=model,
         identity=identity,
-        artifact_path=path.resolve(),
+        artifact_path=artifact.path.resolve(),
         player_stats_sha256=metadata.get("player_stats_sha256"),
     )
 
