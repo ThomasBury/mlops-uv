@@ -5,9 +5,11 @@ The first comparisons favor Elo. Can a different amount of regularization help l
 ## Freeze the candidate and its record
 
 Before opening the final scores, choose the logistic regression setting
-with the lowest mean log loss across the three folds. Draw five `C` values
-from the nine recorded options with seed `42`. `C` is the inverse strength
-of the coefficient penalty. On an exact tie, take the first sampled setting.
+with the lowest mean log loss across the three folds. Run 12 Optuna trials
+with a `TPESampler` seeded at `42`. The first five trials sample from the
+logarithmic range 0.001 to 10. Later trials use the preceding scores to
+propose values. `C` is the inverse strength of the coefficient penalty.
+On an exact tie, take the earliest trial.
 Refit that setting once on all 1,487 mature development matches. Carry
 training prevalence and as-of Elo forward as prespecified baselines. Judge
 the candidate better than Elo only if the entire paired interval for
@@ -18,14 +20,14 @@ candidate minus Elo loss is below zero.
   "$work/matches.parquet" "$work/first"
 ```
 
-The search chooses `C = 0.3` with mean fold log loss `0.68085`. Elo still
+Trial 11 chooses `C ≈ 0.01656` with mean fold log loss `0.67979`. Elo still
 has the lower development score. Keep the logistic candidate frozen for the
-final comparison. `search.csv` records the five trials using scikit-learn's
-negative log loss scorer, so higher values rank first in that file.
+final comparison. `search.csv` records the 12 trials in trial order. Compare
+`mean_log_loss` values to find the minimum.
 
-The search uses `RandomizedSearchCV` with `cv=folds` and `refit=False`. Every trial fits the entire pipeline on each training window. After selecting the penalty, `train_candidate` fits a fresh pipeline once on all mature development rows. The saved `model.joblib` therefore includes a scaler and surface encoder fitted to that population. For F01 its estimate is 0.46910. Changing only the surface to an unseen category produces an all-zero surface encoding and an estimate of 0.47672.
+Every trial fits the entire pipeline on each training window. After selecting the penalty, `train_candidate` fits a fresh pipeline once on all mature development rows. The saved `model.joblib` therefore includes a scaler and surface encoder fitted to that population. For F01 its estimate is 0.47594. Changing only the surface to an unseen category produces an all-zero surface encoding and an estimate of 0.48035.
 
-Open `first/search.csv` to see all five trials. Select one ID in `first/membership.csv` and follow its role through a fold and `final_refit`. `first/selection.json` links that record to the source and history hashes, code, dependency versions, chosen parameter and model bytes. Trust the producer before loading a Joblib file.
+Open `first/search.csv` to see all 12 trials. Select one ID in `first/membership.csv` and follow its role through a fold and `final_refit`. `first/selection.json` links that record to the source and history hashes, code, dependency versions, chosen parameter and model bytes. Trust the producer before loading a Joblib file.
 
 ## Open the final period
 
@@ -44,9 +46,9 @@ selection and report these results.
 
 | Final forecast | Log loss | Candidate minus baseline, mean [95% interval] |
 | --- | ---: | --- |
-| Training prevalence | 0.69299 | −0.06820 [−0.08774, −0.03916] |
-| As-of Elo | 0.62609 | −0.00130 [−0.00250, 0.00057] |
-| Tuned logistic regression | 0.62479 | |
+| Training prevalence | 0.69299 | −0.06351 [−0.08013, −0.03904] |
+| As-of Elo | 0.62609 | +0.00340 [+0.00019, +0.00547] |
+| Tuned logistic regression | 0.62949 | |
 
 For each match, subtract the baseline's loss from the candidate's loss.
 Resample the nine nonempty Monday–Sunday UTC weeks with replacement 2,000
@@ -54,13 +56,13 @@ times and calculate the mean per match in each draw. This keeps the two
 forecasts paired and keeps matches sharing a week together. It partly
 accounts for tournament scheduling and repeated players. A tournament can
 span weeks, and nine weeks from one season give a rough interval. The final
-comparison favors the candidate over prevalence. The small edge over Elo
-is inconclusive because the interval includes zero. Keep Elo as the benchmark.
+comparison favors the candidate over prevalence. For the Elo comparison,
+the entire interval is positive, so keep Elo.
 
 Calibration compares the average forecast with the observed win rate in
 five fixed probability bins. For the logistic candidate, the `0.6` to
-`0.8` bin has 85 matches, an average forecast of `0.677`, and a win rate of
-`0.741`. The highest bin has only seven matches. Treat that gap as a lead
+`0.8` bin has 81 matches, an average forecast of `0.668`, and a win rate of
+`0.741`. The highest bin has two matches. Treat that gap as a lead
 for investigation. Inspect counts across all bins before diagnosing a
 systematic calibration problem.
 

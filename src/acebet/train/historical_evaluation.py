@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+from contextlib import nullcontext
 from datetime import date, timedelta
+from hashlib import sha256
 from importlib.metadata import version
 import json
 from pathlib import Path
 from platform import python_version
+from statistics import fmean
 from tempfile import TemporaryDirectory
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import joblib
 import numpy as np
@@ -18,7 +21,7 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import log_loss
-from sklearn.model_selection import RandomizedSearchCV, train_test_split
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -40,11 +43,15 @@ from acebet.dataprep.historical_results import (
 )
 from acebet.model_artifacts import read_json, sha256_file
 
+if TYPE_CHECKING:
+    from optuna.trial import Trial
+
 VALIDATION_STARTS = (date(2021, 3, 1), date(2021, 5, 1), date(2021, 7, 1))
 FEATURES = ["elo_gap", "surface"]
 SEED = 42
-C_VALUES = [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0]
-SEARCH_TRIALS = 5
+C_BOUNDS = (0.001, 10.0)
+SEARCH_TRIALS = 12
+STARTUP_TRIALS = 5
 BOOTSTRAP_DRAWS = 2000
 REPLAY_ATOL = 1e-8
 CALIBRATION_BINS = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
@@ -52,7 +59,7 @@ MEMBERSHIP = ["match_id", "event_date", "available_at", "cutoff", "p1_id", "p2_i
 
 
 def replay_frame(results: Sequence[MatchResult], *, leak: bool = False) -> pd.DataFrame:
-    """Arrange M3 replay outputs for fitting and inspection."""
+    """Arrange historical replay outputs for fitting and inspection."""
     return pd.DataFrame.from_records(
         {
             "match_id": match.match_id,
@@ -109,7 +116,19 @@ def development_folds(frame: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]
     return folds
 
 
-def logistic_pipeline() -> Pipeline:
+def _fold_membership(
+    frame: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
+) -> list[pd.DataFrame]:
+    return [
+        frame.iloc[indices][MEMBERSHIP].assign(
+            split=f"fold_{number}", partition=partition
+        )
+        for number, (train_idx, valid_idx) in enumerate(folds, 1)
+        for partition, indices in (("train", train_idx), ("validation", valid_idx))
+    ]
+
+
+def logistic_pipeline(c: float = 1.0) -> Pipeline:
     return Pipeline(
         [
             (
@@ -125,7 +144,7 @@ def logistic_pipeline() -> Pipeline:
                     ]
                 ),
             ),
-            ("model", LogisticRegression(random_state=SEED)),
+            ("model", LogisticRegression(C=c, random_state=SEED)),
         ]
     )
 
@@ -160,7 +179,9 @@ def _comparison(
     random_model = logistic_pipeline().fit(
         random_train[FEATURES], random_train["label"]
     )
-    latest = random_train["available_at"].max()
+    latest_train = random_train.loc[random_train["available_at"].idxmax()]
+    earliest_valid = random_valid.loc[random_valid["cutoff"].idxmin()]
+    latest = latest_train["available_at"]
     report = {
         "fold_log_loss": fold_scores,
         "mean_log_loss": pd.DataFrame(fold_scores).mean().to_dict(),
@@ -174,7 +195,9 @@ def _comparison(
             "validation_rows_with_later_training_labels": int(
                 (random_valid["cutoff"] < latest).sum()
             ),
-            "earliest_validation_cutoff": random_valid["cutoff"].min().isoformat(),
+            "earliest_validation_match_id": earliest_valid["match_id"],
+            "earliest_validation_cutoff": earliest_valid["cutoff"].isoformat(),
+            "latest_training_match_id": latest_train["match_id"],
             "latest_training_label_available_at": latest.isoformat(),
         },
     }
@@ -226,10 +249,12 @@ def _runtime_identity() -> dict:
                     "joblib",
                     "mlflow",
                     "numpy",
+                    "optuna",
                     "pandas",
                     "pyarrow",
                     "scikit-learn",
                     "scipy",
+                    "skops",
                     "threadpoolctl",
                 )
             },
@@ -241,6 +266,37 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(
         json.dumps(payload, indent=2, allow_nan=False) + "\n", encoding="utf-8"
     )
+
+
+def compare_development(
+    results: Sequence[MatchResult], output: Path | None = None
+) -> dict:
+    """Compare untuned forecasts and optionally save the fixed temporal folds."""
+    if output is not None and output.exists():
+        raise FileExistsError(output)
+    development = development_results(results)
+    frame = replay_frame(development, leak=True)
+    folds = development_folds(frame)
+    report, _ = _comparison(frame, folds)
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=output.parent) as temporary:
+            artifacts = Path(temporary) / output.name
+            artifacts.mkdir()
+            membership = artifacts / "membership.csv"
+            pd.concat(_fold_membership(frame, folds)).to_csv(membership, index=False)
+            report.update(
+                source_sha256=SNAPSHOT_SHA256,
+                data_sha256=content_sha256(results),
+                development_sha256=content_sha256(development),
+                validation_starts=[day.isoformat() for day in VALIDATION_STARTS],
+                final_start=DEVELOPMENT_END.isoformat(),
+                development_rows=len(development),
+                membership_sha256=sha256_file(membership),
+            )
+            _write_json(artifacts / "comparison.json", report)
+            artifacts.rename(output)
+    return report
 
 
 def _tracking_experiment(parent: Path):
@@ -258,83 +314,194 @@ def _tracking_experiment(parent: Path):
     )
 
 
+def _study_record(
+    results: Sequence[MatchResult], development: Sequence[MatchResult], fold_csv: str
+) -> dict:
+    return {
+        "source_sha256": SNAPSHOT_SHA256,
+        "data_sha256": content_sha256(results),
+        "development_sha256": content_sha256(development),
+        "fold_membership_sha256": sha256(fold_csv.encode("utf-8")).hexdigest(),
+        **_runtime_identity(),
+        "config": {
+            "validation_starts": [day.isoformat() for day in VALIDATION_STARTS],
+            "final_start": DEVELOPMENT_END.isoformat(),
+            "selection_label_cutoff": prior_day_cutoff(DEVELOPMENT_END).isoformat(),
+            "features": FEATURES,
+            "initial_elo": INITIAL_ELO,
+            "elo_k": K,
+            "search_direction": "minimize",
+            "search_sampler": "TPESampler",
+            "search_startup_trials": STARTUP_TRIALS,
+            "search_trials": SEARCH_TRIALS,
+            "search_jobs": 1,
+            "c_bounds": list(C_BOUNDS),
+            "c_log_scale": True,
+            "seed": SEED,
+            "bootstrap_draws": BOOTSTRAP_DRAWS,
+            "bootstrap_block": "nonempty UTC calendar week starting Monday",
+            "calibration_bin_edges": CALIBRATION_BINS,
+            "replay_atol": REPLAY_ATOL,
+            "replay_rtol": 0.0,
+            "selection_rule": "Lowest mean temporal fold log loss; earliest trial on an exact tie.",
+        },
+    }
+
+
+def _optimize(
+    frame: pd.DataFrame,
+    folds: list[tuple[np.ndarray, np.ndarray]],
+    *,
+    experiment_id: str | None = None,
+) -> tuple[dict, list[dict]]:
+    import optuna
+
+    if experiment_id is not None:
+        import mlflow
+    else:
+        mlflow = None
+
+    def objective(trial: Trial) -> float:
+        tracking = (
+            mlflow.start_run(
+                experiment_id=experiment_id,
+                nested=True,
+                run_name=f"trial-{trial.number:02d}",
+            )
+            if mlflow is not None
+            else nullcontext()
+        )
+        with tracking as run:
+            c = trial.suggest_float("C", *C_BOUNDS, log=True)
+            if mlflow is not None and run is not None:
+                mlflow.log_params({"trial_number": trial.number, "C": c})
+                trial.set_user_attr("run_id", run.info.run_id)
+
+            fold_losses = {}
+            for number, (train_idx, valid_idx) in enumerate(folds, 1):
+                train, valid = frame.iloc[train_idx], frame.iloc[valid_idx]
+                model = logistic_pipeline(c).fit(train[FEATURES], train["label"])
+                probability = model.predict_proba(valid[FEATURES])[:, 1]
+                fold_losses[f"fold_{number}_log_loss"] = log_loss(
+                    valid["label"], probability, labels=[0, 1]
+                )
+            score = fmean(fold_losses.values())
+            trial.set_user_attr("fold_losses", fold_losses)
+            if mlflow is not None:
+                mlflow.log_metrics({**fold_losses, "mean_log_loss": score})
+            return score
+
+    study = optuna.create_study(
+        direction="minimize",
+        sampler=optuna.samplers.TPESampler(seed=SEED, n_startup_trials=STARTUP_TRIALS),
+    )
+    study.optimize(objective, n_trials=SEARCH_TRIALS, n_jobs=1)
+    winner = study.best_trial
+    trials = [
+        {
+            "trial_number": trial.number,
+            "C": trial.params["C"],
+            **trial.user_attrs["fold_losses"],
+            "mean_log_loss": trial.value,
+            "status": trial.state.name,
+        }
+        for trial in study.trials
+    ]
+    decision = {
+        "best_trial_number": winner.number,
+        "best_params": {"model__C": winner.params["C"]},
+        "best_mean_log_loss": winner.value,
+    }
+    if experiment_id is not None:
+        decision["best_trial_run_id"] = winner.user_attrs["run_id"]
+    return decision, trials
+
+
+def tune_development(results: Sequence[MatchResult]) -> dict:
+    """Search the fixed development folds without refitting or opening a tracking run."""
+    development = development_results(results)
+    frame = replay_frame(development)
+    folds = development_folds(frame)
+    fold_csv = pd.concat(_fold_membership(frame, folds)).to_csv(index=False)
+    decision, trials = _optimize(frame, folds)
+    return {
+        **_study_record(results, development, fold_csv),
+        **decision,
+        "trials": trials,
+    }
+
+
 def train_candidate(results: Sequence[MatchResult], output: Path) -> dict:
     """Freeze the temporal search decision and fitted preprocessing before scoring."""
     import mlflow
+    import mlflow.sklearn
+    from mlflow.models import infer_signature
 
     if output.exists():
         raise FileExistsError(output)
     development = development_results(results)
     frame = replay_frame(development, leak=True)
     folds = development_folds(frame)
-    search = RandomizedSearchCV(
-        logistic_pipeline(),
-        {"model__C": C_VALUES},
-        n_iter=SEARCH_TRIALS,
-        scoring="neg_log_loss",
-        cv=folds,
-        random_state=SEED,
-        refit=False,
-        error_score="raise",
-    ).fit(frame[FEATURES], frame["label"])
-    model = (
-        logistic_pipeline()
-        .set_params(**search.best_params_)
-        .fit(frame[FEATURES], frame["label"])
-    )
+    fold_membership = _fold_membership(frame, folds)
+    fold_csv = pd.concat(fold_membership).to_csv(index=False)
+    study_record = _study_record(results, development, fold_csv)
     comparison, random_membership = _comparison(frame, folds)
     metrics = comparison["mean_log_loss"]
-    metrics["logistic_tuned"] = -float(search.best_score_)
-    membership = [frame[MEMBERSHIP].assign(split="final_refit", partition="train")]
-    for number, (train_idx, valid_idx) in enumerate(folds, 1):
-        for partition, indices in (("train", train_idx), ("validation", valid_idx)):
-            membership.append(
-                frame.iloc[indices][MEMBERSHIP].assign(
-                    split=f"fold_{number}", partition=partition
-                )
-            )
+    refit_membership = frame[MEMBERSHIP].assign(split="final_refit", partition="train")
 
     output.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=output.parent) as temporary:
         bundle = Path(temporary) / output.name
         bundle.mkdir()
-        joblib.dump(model, bundle / "model.joblib")
-        pd.concat([*membership, random_membership]).to_csv(
-            bundle / "membership.csv", index=False
-        )
-        trials = pd.DataFrame(search.cv_results_).filter(
-            regex=r"^(params$|split\d+_test_score$|mean_test_score$|rank_test_score$)"
-        )
-        trials.to_csv(bundle / "search.csv", index=False)
         with mlflow.start_run(
             experiment_id=_tracking_experiment(output.parent), run_name="selection"
         ) as run:
+            mlflow.log_dict(study_record, "study.json")
+            mlflow.log_params(
+                {
+                    "data_sha256": study_record["data_sha256"],
+                    "fold_membership_sha256": study_record["fold_membership_sha256"],
+                    "seed": SEED,
+                    "search_direction": study_record["config"]["search_direction"],
+                    "search_trials": SEARCH_TRIALS,
+                }
+            )
+            decision, trials = _optimize(
+                frame, folds, experiment_id=run.info.experiment_id
+            )
+            metrics["logistic_tuned"] = decision["best_mean_log_loss"]
+            model = logistic_pipeline(decision["best_params"]["model__C"]).fit(
+                frame[FEATURES], frame["label"]
+            )
+            joblib.dump(model, bundle / "model.joblib")
+            pd.concat([refit_membership, *fold_membership, random_membership]).to_csv(
+                bundle / "membership.csv", index=False
+            )
+            pd.DataFrame(trials).to_csv(bundle / "search.csv", index=False)
+
+            example = frame[FEATURES].head(2)
+            model_info = mlflow.sklearn.log_model(
+                model,
+                name="historical-logistic",
+                signature=infer_signature(example, model.predict_proba(example)),
+                pyfunc_predict_fn="predict_proba",
+                serialization_format="skops",
+                # scikit-learn 1.6 stores this class in the fitted ColumnTransformer.
+                skops_trusted_types=[
+                    "sklearn.compose._column_transformer._RemainderColsList"
+                ],
+                pip_requirements=[
+                    f"{name}=={version(name)}"
+                    for name in ("scikit-learn", "numpy", "pandas", "skops")
+                ],
+                params=decision["best_params"],
+                tags={"best_trial_run_id": decision["best_trial_run_id"]},
+            )
             record = {
                 "run_id": run.info.run_id,
-                "source_sha256": SNAPSHOT_SHA256,
-                "data_sha256": content_sha256(results),
-                "development_sha256": content_sha256(development),
-                **_runtime_identity(),
-                "config": {
-                    "validation_starts": [day.isoformat() for day in VALIDATION_STARTS],
-                    "final_start": DEVELOPMENT_END.isoformat(),
-                    "selection_label_cutoff": prior_day_cutoff(
-                        DEVELOPMENT_END
-                    ).isoformat(),
-                    "features": FEATURES,
-                    "initial_elo": INITIAL_ELO,
-                    "elo_k": K,
-                    "c_values": C_VALUES,
-                    "search_trials": SEARCH_TRIALS,
-                    "seed": SEED,
-                    "bootstrap_draws": BOOTSTRAP_DRAWS,
-                    "bootstrap_block": "nonempty UTC calendar week starting Monday",
-                    "calibration_bin_edges": CALIBRATION_BINS,
-                    "replay_atol": REPLAY_ATOL,
-                    "replay_rtol": 0.0,
-                    "selection_rule": "Lowest mean temporal fold log loss among sampled logistic settings, first sampled on an exact tie.",
-                },
-                "best_params": search.best_params_,
+                **study_record,
+                **decision,
+                "logged_model_uri": model_info.model_uri,
                 "fitted_model_params": model.named_steps["model"].get_params(),
                 "refit_prevalence": _prevalence(frame),
                 **comparison,
@@ -346,12 +513,12 @@ def train_candidate(results: Sequence[MatchResult], output: Path) -> dict:
             _write_json(bundle / "selection.json", record)
             mlflow.log_params(
                 {
-                    **record["best_params"],
-                    "seed": SEED,
-                    "data_sha256": record["data_sha256"],
+                    **decision["best_params"],
+                    "best_trial_number": record["best_trial_number"],
                     "model_sha256": record["artifacts_sha256"]["model.joblib"],
                 }
             )
+            mlflow.set_tag("best_trial_run_id", record["best_trial_run_id"])
             mlflow.log_metrics(
                 {f"dev_{name}_log_loss": value for name, value in metrics.items()}
             )
@@ -477,16 +644,23 @@ def evaluate_candidate(results: Sequence[MatchResult], bundle: Path) -> dict:
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("compare", "train", "evaluate"):
+    for name in ("compare", "tune", "train", "evaluate"):
         subparser = commands.add_parser(name)
         subparser.add_argument("results", type=Path)
-        if name != "compare":
+        if name == "compare":
+            subparser.add_argument(
+                "--output",
+                type=Path,
+                help="Save comparison and fold membership in a new directory.",
+            )
+        elif name != "tune":
             subparser.add_argument("bundle", type=Path)
     args = parser.parse_args(argv)
     results = read_results(args.results)
     if args.command == "compare":
-        frame = replay_frame(development_results(results), leak=True)
-        report, _ = _comparison(frame, development_folds(frame))
+        report = compare_development(results, args.output)
+    elif args.command == "tune":
+        report = tune_development(results)
     elif args.command == "train":
         report = train_candidate(results, args.bundle)
     else:

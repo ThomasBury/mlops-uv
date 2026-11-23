@@ -23,7 +23,8 @@ dev = [
     "zensical",
 ]
 mlops = [
-    "mlflow>=2.20.0",
+    "mlflow>=3.18",
+    "optuna>=4.5,<5",
 ]
 
 [tool.setuptools]

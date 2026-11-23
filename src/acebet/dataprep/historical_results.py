@@ -188,6 +188,11 @@ def _ordered(results: Iterable[MatchResult]) -> list[MatchResult]:
 
 def normalize_results(raw: bytes) -> list[MatchResult]:
     """Validate source rows, deduplicate repeats, and keep completed matches."""
+    results, _ = _normalize_with_counts(raw)
+    return results
+
+
+def _normalize_with_counts(raw: bytes) -> tuple[list[MatchResult], dict[str, int]]:
     reader = csv.DictReader(
         StringIO(raw.decode("utf-8-sig")), delimiter=";", strict=True
     )
@@ -195,6 +200,7 @@ def normalize_results(raw: bytes) -> list[MatchResult]:
         raise ValueError("Unexpected Valuebetennis CSV columns.")
     seen = {}
     results = []
+    duplicate_rows = 0
     for row in reader:
         if None in row or None in row.values():
             raise ValueError(f"Incorrect column count on CSV line {reader.line_num}.")
@@ -202,6 +208,7 @@ def normalize_results(raw: bytes) -> list[MatchResult]:
         if match_id in seen:
             if seen[match_id] != row:
                 raise ValueError(f"Conflicting duplicate for match {match_id}.")
+            duplicate_rows += 1
             continue
         seen[match_id] = row
         result = _normalize_row(row)
@@ -209,7 +216,11 @@ def normalize_results(raw: bytes) -> list[MatchResult]:
             results.append(result)
     if not results:
         raise ValueError("No completed matches in the snapshot.")
-    return _ordered(results)
+    return _ordered(results), {
+        "input_rows": len(seen) + duplicate_rows,
+        "duplicate_rows": duplicate_rows,
+        "excluded_rows": len(seen) - len(results),
+    }
 
 
 def content_sha256(results: Iterable[MatchResult]) -> str:
@@ -227,10 +238,10 @@ def content_sha256(results: Iterable[MatchResult]) -> str:
 
 
 def build_results(snapshot: Path, output: Path) -> dict[str, str | int]:
-    """Verify, normalize, and atomically publish a canonical Parquet file."""
+    """Publish canonical Parquet and report its identity and row counts."""
     if snapshot.resolve() == output.resolve():
         raise ValueError("The Parquet output must preserve the raw snapshot.")
-    results = normalize_results(ingest_snapshot(snapshot))
+    results, counts = _normalize_with_counts(ingest_snapshot(snapshot))
     digest = content_sha256(results)
     schema = RESULT_SCHEMA.with_metadata(
         {
@@ -255,6 +266,7 @@ def build_results(snapshot: Path, output: Path) -> dict[str, str | int]:
         "source_sha256": SNAPSHOT_SHA256,
         "content_sha256": digest,
         "rows": len(results),
+        **counts,
     }
 
 

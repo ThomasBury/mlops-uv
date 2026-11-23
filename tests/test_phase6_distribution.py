@@ -221,21 +221,27 @@ def test_default_clean_install_replays_and_serves_without_optional_packages(
     replay_command = python.with_name(
         "acebet-replay.exe" if os.name == "nt" else "acebet-replay"
     )
-    replay = subprocess.run(
-        [str(replay_command)],
-        cwd=tmp_path,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    assert json.loads(replay.stdout) == {
-        "fixture_id": "F01",
-        "cutoff": "2030-06-10T12:00:00Z",
-        "p1_id": "P01",
-        "p2_id": "P02",
-        "p1_win_probability": 0.5,
-    }
+    forward = ["--canonical-probability", "0.70"]
+    for args, first, second, probability in (
+        ([], "P01", "P02", 0.50),
+        (forward, "P01", "P02", 0.70),
+        ([*forward, "--reverse"], "P02", "P01", 0.30),
+    ):
+        replay = subprocess.run(
+            [str(replay_command), *args],
+            cwd=tmp_path,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert json.loads(replay.stdout) == {
+            "fixture_id": "F01",
+            "cutoff": "2030-06-10T12:00:00Z",
+            "p1_id": first,
+            "p2_id": second,
+            "p1_win_probability": pytest.approx(probability),
+        }
     environment.update(
         {
             "ACEBET_SECRET_KEY": "distribution-default-smoke-secret",

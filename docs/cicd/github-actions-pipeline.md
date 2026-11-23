@@ -7,7 +7,7 @@ description: Reference the Python matrix, integration coverage, notebook executi
 
 ## Historical forecast workflow
 
-`.github/workflows/forecast.yaml` runs `just forecast-test` and `just forecast-candidate` under Python 3.12. Pull requests, pushes to main, manual dispatch and Mondays at 06:23 UTC trigger a run. The job checks for a clean checkout and uploads the Parquet history, frozen bundle and validation record as `historical-forecast`. An inconclusive comparison can complete this job successfully. Approval and starting a service are separate actions. [Release decision exercise](../tutorial/automate-and-audit-a-forecast.md)
+`.github/workflows/forecast.yaml` runs `just forecast-release-test` and `just forecast-candidate` under Python 3.12. Scheduled and manual runs also run `just forecast-test`. Pull requests, pushes to main, manual dispatch and Mondays at 06:23 UTC trigger a run. The job checks for a clean checkout and uploads the Parquet history, frozen bundle and validation record as `historical-forecast`. A valid comparison can complete this job successfully even when the gate rejects the candidate. Approval and starting a service are separate actions. [Release decision exercise](../tutorial/automate-and-audit-a-forecast.md)
 
 ## Main Workflow
 
