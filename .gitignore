@@ -24,7 +24,6 @@ htmlcov/
 .coverage
 .coverage.*
 .pytest_cache/
-docs/_build/
 .ipynb_checkpoints
 .python-version
 .env
@@ -32,8 +31,7 @@ docs/_build/
 /site
 .mypy_cache/
 
-# Local agent tools, editor backup, and application log
+# Local agent tools and application log
 /.agents/
 /.kilo/
-/docs/index.md.orig
 /info.log

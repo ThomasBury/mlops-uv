@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11"]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -26,36 +26,13 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
           python-version: ${{ matrix.python-version }}
-      - name: Install development and forecast dependencies
-        run: uv sync --locked --dev --group mlops
-      - name: Ruff lint
-        run: uv run ruff check src tests
-      - name: Ruff format check
-        run: uv run ruff format --check src tests
-      - name: ty type check
-        run: uv run ty check
-      - name: Unit tests with branch coverage
-        run: >-
-          uv run pytest tests
-          -m "not (api or tracing or packaging)"
-          --cov=src/acebet
-          --cov-branch
-          --cov-fail-under=0
-          --cov-report=
-      - name: Preserve Python 3.12 unit coverage
-        if: matrix.python-version == '3.12'
-        run: mv .coverage .coverage.unit
-      - name: Upload Python 3.12 unit coverage
-        if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: unit-coverage
-          path: .coverage.unit
-          include-hidden-files: true
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      - name: Run unit tests
+        run: just unit-test
 
   integration:
-    name: Python 3.12 integration, API, tracing, and packaging
-    needs: python
+    name: Python 3.12 static checks and full suite
     runs-on: ubuntu-latest
     env:
       ACEBET_ENV: test
@@ -72,35 +49,12 @@ jobs:
           python-version: "3.12"
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
-      - name: Install core and development dependencies
-        run: uv sync --locked --dev
+      - name: Run Ruff lint, Ruff format check, and ty
+        run: just lint format-check typecheck
       - name: Run non-mutating generation checks
         run: just data-check-sample feature-state-check train-check
-      - name: Execute tutorial notebook without modifying it
-        run: just notebook-check
-      - name: Install forecast and tracing dependencies
-        run: uv sync --locked --dev --group mlops --extra tracing
-      - name: Run integration, API, tracing, and packaging tests
-        run: >-
-          uv run pytest tests
-          -m "api or tracing or packaging"
-          --cov-fail-under=0
-          --cov=src/acebet
-          --cov-branch
-          --cov-report=
-      # pytest-cov clears .coverage.* at startup; restore unit data after tests.
-      - name: Download unit coverage
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: unit-coverage
-          path: .
-      - name: Combine and enforce coverage guarantees
-        run: |
-          mv .coverage .coverage.integration
-          uv run coverage combine .coverage.unit .coverage.integration
-          uv run coverage report
-          uv run coverage report --fail-under=100 \
-            --include='src/acebet/model_artifacts.py,src/acebet/app/main.py,src/acebet/app/routers/prediction.py,src/acebet/app/dependencies/predict_winner.py'
+      - name: Run full suite and enforce branch coverage gates
+        run: just coverage
       - name: Verify checks left tracked files unchanged
         run: git diff --exit-code
 
