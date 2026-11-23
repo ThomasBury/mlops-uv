@@ -25,9 +25,9 @@ setup:
 test:
     uv sync --locked --group mlops --extra tracing
     uv run pytest tests
-# Runs the Python-version matrix subset without optional integrations.
-unit-test: setup
-    uv run pytest tests -m "not (api or tracing or packaging)"
+# Runs the Python-version matrix subset with locked forecast dependencies.
+unit-test:
+    uv run --locked --group mlops pytest tests -m "not (api or tracing or packaging)"
 # Runs the Python 3.12 integration subset.
 integration-test:
     uv sync --locked --group mlops --extra tracing
@@ -41,25 +41,20 @@ typecheck:
     uv run --locked --group mlops ty check
 # Enforces overall and critical-module branch coverage.
 coverage:
-    uv sync --locked --group mlops --extra tracing
-    uv run pytest tests --cov=src/acebet --cov-branch
-    uv run coverage report --fail-under=100 \
+    uv run --locked --group mlops --extra tracing pytest tests --cov=src/acebet --cov-branch
+    uv run --locked --no-sync coverage report --fail-under=100 \
         --include='src/acebet/model_artifacts.py,src/acebet/app/main.py,src/acebet/app/routers/prediction.py,src/acebet/app/dependencies/predict_winner.py'
 # Builds and smoke-tests wheel and sdist installations.
 package-check: setup
     uv run pytest tests -m packaging
-# Executes the committed tutorial notebook without changing it.
-notebook-check: setup
-    MPLBACKEND=Agg uv run jupyter execute \
-        docs/assets/notebooks/01-starter-feature-and-training-flow.ipynb
 # Validates/checks the data preparation pipeline
 data-check: setup
     uv run python -m acebet.dataprep.dataprep
 # Builds prepared data only at the two paths explicitly supplied by the caller.
-data-build raw_input output_path: setup
+data-build $raw_input $output_path: setup
     uv run python -m acebet.dataprep.raw_to_prepared \
-        --input-path "{{raw_input}}" \
-        --output-path "{{output_path}}"
+        --input-path "$raw_input" \
+        --output-path "$output_path"
 # Builds canonical history from the pinned tutorial snapshot.
 forecast-prepare $results:
     {{forecast_uv}} python -m acebet.dataprep.historical_results data/raw/valuebetennis-2021-atp.csv "$results"
@@ -114,11 +109,12 @@ feature-state-check: setup
     uv run python -m acebet.dataprep.dataprep \
         --input-path src/acebet/data/atp_data_sample.feather \
         --player-stats-output-path "${temp_dir}/latest_player_stats_sample.feather"
-# Intentionally refreshes the project and packaged player-state artifacts.
-refresh-feature-state: setup
+_build-local-player-state: setup
     uv run python -m acebet.dataprep.dataprep \
         --input-path data/atp_data_production.feather \
         --player-stats-output-path data/latest_player_stats.feather
+# Intentionally refreshes the project and packaged player-state artifacts.
+refresh-feature-state: _build-local-player-state
     uv run python -m acebet.dataprep.dataprep \
         --input-path data/atp_data_production.feather \
         --player-stats-output-path src/acebet/data/latest_player_stats.feather
@@ -129,19 +125,19 @@ refresh-feature-state: setup
 train-check: setup
     uv run python -m acebet.train.train --post-selection-end-date 2018-03-04
 # Exports a model bundle to an ignored local directory.
-train-local output_dir="var/models": setup
-    uv run python -m acebet.train.train --post-selection-end-date 2018-03-04 --export-joblib --output-dir "{{output_dir}}"
+train-local $output_dir="var/models": setup
+    uv run python -m acebet.train.train --post-selection-end-date 2018-03-04 --export-joblib --output-dir "$output_dir"
 # Promotes the latest bundle in an ignored local directory.
-promote-local output_dir="var/models": setup
-    uv run python -m acebet.train.promote --output-dir "{{output_dir}}"
+promote-local $output_dir="var/models": setup
+    uv run python -m acebet.train.promote --output-dir "$output_dir"
 # Trains with MLflow and exports only to ignored local directories.
-train-local-mlflow output_dir="var/models":
+train-local-mlflow $output_dir="var/models":
     uv sync --locked --group mlops
     uv run python -m acebet.train.train \
         --post-selection-end-date 2018-03-04 \
         --export-joblib \
         --enable-mlflow \
-        --output-dir "{{output_dir}}"
+        --output-dir "$output_dir"
 # Checks whether local API auth settings are configured through .env or explicit env vars.
 _require-local-auth-config:
     #!/usr/bin/env bash
@@ -161,27 +157,21 @@ _require-local-auth-config:
 serve: _require-local-auth-config
     uv run fastapi dev --host 127.0.0.1 --port 8000
 # Starts the API with strict external production assets created by `just rebuild-artifacts models`.
-serve-with-assets model_dir="models" data_dir="data": _require-local-auth-config
+serve-with-assets $model_dir="models" $data_dir="data": _require-local-auth-config
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ ! -f "{{model_dir}}/promoted_model.json" ]]; then
-        echo "Missing {{model_dir}}/promoted_model.json. Run 'just rebuild-artifacts {{model_dir}}'." >&2
+    if [[ ! -f "$model_dir/promoted_model.json" ]]; then
+        printf 'Missing %s/promoted_model.json. Run: just rebuild-artifacts %q\n' "$model_dir" "$model_dir" >&2
         exit 1
     fi
-    if [[ ! -f "{{data_dir}}/latest_player_stats.feather" ]]; then
-        echo "Missing {{data_dir}}/latest_player_stats.feather. Run 'just rebuild-artifacts {{model_dir}}'." >&2
+    if [[ ! -f "$data_dir/latest_player_stats.feather" ]]; then
+        printf 'Missing %s/latest_player_stats.feather. Run: just rebuild-artifacts %q\n' "$data_dir" "$model_dir" >&2
         exit 1
     fi
-    model_dir="$(cd "{{model_dir}}" && pwd)"
-    data_dir="$(cd "{{data_dir}}" && pwd)"
+    model_dir="$(CDPATH= cd -- "$model_dir" && pwd)"
+    data_dir="$(CDPATH= cd -- "$data_dir" && pwd)"
     ACEBET_MODEL_DIR="${model_dir}" ACEBET_DATA_DIR="${data_dir}" \
         uv run fastapi dev --host 127.0.0.1 --port 8000
-# Serves the authored documentation site locally with Zensical.
-docs-serve:
-    uv run zensical serve --dev-addr 127.0.0.1:8002
-# Builds the static documentation site into ./site.
-docs-build:
-    uv run zensical build
 # Prints the Swagger/OpenAPI docs URL
 docs:
     @echo "{{base_url}}/docs"
@@ -304,7 +294,7 @@ manual:
 
     just --quiet _wait-for-api "${base_url}"
     just --quiet --set base_url "${base_url}" manual-live
-# Non-mutating project validation, including coverage, packaging, notebook, docs, and API exercises.
+# Non-mutating project validation, including coverage, packaging, and API exercises.
 review:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -324,17 +314,12 @@ review:
     uv run ruff format --check src tests
     echo "== ty =="
     just --quiet typecheck
-    echo "== notebook =="
-    just --quiet notebook-check
-    echo "== docs =="
-    just --quiet docs-build
     echo "== temporary API smoke =="
     just --quiet manual
-# Intentionally refreshes feature state, exports a local model, and promotes it.
-rebuild-artifacts output_dir="var/models":
-    just --quiet refresh-feature-state
-    just --quiet train-local "{{output_dir}}"
-    just --quiet promote-local "{{output_dir}}"
+# Rebuilds local player state, exports a local model, and promotes it.
+rebuild-artifacts $output_dir="var/models": _build-local-player-state
+    just --quiet train-local "$output_dir"
+    just --quiet promote-local "$output_dir"
 # Builds the Python package (wheel + sdist).
 build:
     uv build

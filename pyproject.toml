@@ -12,15 +12,10 @@ include = ["acebet*"]  # package names should match these glob patterns (["*"] b
 [dependency-groups]
 dev = [
     "coverage>=7.6.12",
-    "ipykernel>=6.29.5",
-    "markdown>=3.6",
-    "matplotlib>=3.9.2",
-    "nbclient>=0.10.2",
     "pytest>=8.3.4",
     "pytest-cov>=6.0.0",
     "ruff>=0.9.7",
     "ty>=0.0.65",
-    "zensical",
 ]
 mlops = [
     "mlflow>=3.18",

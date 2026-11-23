@@ -59,22 +59,31 @@ def test_create_app_returns_independent_app_owned_state():
     assert first.state.runtime_assets is not second.state.runtime_assets
 
 
-def test_lifespan_loads_and_clears_both_runtime_modes(phase5_settings):
+def test_lifespan_loads_and_clears_both_runtime_modes(monkeypatch, phase5_settings):
+    model_alias = main.PACKAGE_DATA_DIR / ".." / main.PACKAGE_DATA_DIR.name
+    monkeypatch.setenv("ACEBET_MODEL_DIR", str(model_alias))
+    load_bundle = Mock(wraps=main.load_model_bundle)
+    monkeypatch.setattr(main, "load_model_bundle", load_bundle)
     application = create_app()
 
     assert application.state.runtime_assets.production is None
     assert application.state.runtime_assets.testing is None
     with TestClient(application):
-        assert application.state.runtime_assets.production is not None
-        assert application.state.runtime_assets.testing is not None
+        production = application.state.runtime_assets.production
+        testing = application.state.runtime_assets.testing
+        assert production.model is testing.model
+        assert not production.player_stats.equals(testing.player_stats)
+        load_bundle.assert_called_once_with(main.PACKAGE_DATA_DIR.resolve())
         promotion = read_json(main.PACKAGE_DATA_DIR / "promoted_model.json")
-        identity = application.state.runtime_assets.production.model_identity
+        identity = production.model_identity
         assert identity.version == promotion["model_filename"].removesuffix(".joblib")
         assert identity.kind == promotion["model_kind"]
         assert identity.sha256 == promotion["model_sha256"]
 
     assert application.state.runtime_assets.production is None
     assert application.state.runtime_assets.testing is None
+    with TestClient(application):
+        assert load_bundle.call_count == 2
 
 
 def test_production_lifespan_loads_only_production(monkeypatch):
