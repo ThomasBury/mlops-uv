@@ -19,7 +19,7 @@ dev = [
 ]
 mlops = [
     "mlflow>=3.18",
-    "optuna>=4.5,<5",
+    "optuna>=4.5,<6",
 ]
 
 [tool.setuptools]
